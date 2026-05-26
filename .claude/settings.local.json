@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell($path = \"E:\\\\Учеба\\\\Проект\\\\WaveLink\"; $items = @\\(Get-ChildItem -Path $path -Force -ErrorAction SilentlyContinue\\); if \\($items.Count -eq 0\\) { Write-Host \"Directory is empty or does not contain items\" } else { $items | ForEach-Object { $_.Name } })",
+      "Bash(dotnet --version)",
+      "Bash(dotnet restore *)",
+      "PowerShell(node --version)",
+      "PowerShell(npm --version)"
+    ]
+  }
+}
