@@ -18,13 +18,13 @@ export function Layout() {
         <header className="topbar">
           <Link to="/" className="brand">WaveLink</Link>
           <nav className="nav">
-            <NavLink to="/" end>Library</NavLink>
-            <NavLink to="/collections">Collections</NavLink>
+            <NavLink to="/" end>Библиотека</NavLink>
+            <NavLink to="/collections">Коллекции</NavLink>
             <NavLink to="/telegram">Telegram</NavLink>
           </nav>
           <div className="topbar-right">
-            <span className="user-email">{email ?? "Account"}</span>
-            <button className="btn-ghost" onClick={handleLogout}>Logout</button>
+            <span className="user-email">{email ?? "Аккаунт"}</span>
+            <button className="btn-ghost" onClick={handleLogout}>Выйти</button>
           </div>
         </header>
 

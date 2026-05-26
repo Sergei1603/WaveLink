@@ -17,9 +17,9 @@ export function AddToCollectionMenu({ trackId, onDone }: { trackId: string; onDo
 
   return (
     <div className="popover">
-      <div className="popover-title">Add to collection</div>
+      <div className="popover-title">Добавить в коллекцию</div>
       {err && <div className="error">{err}</div>}
-      {items.length === 0 && <div className="muted">No collections yet.</div>}
+      {items.length === 0 && <div className="muted">Коллекций ещё нет.</div>}
       {items.map(c => (
         <button key={c.id} className="popover-item" onClick={() => add(c.id)}>
           {c.name} <span className="muted">({c.trackCount})</span>

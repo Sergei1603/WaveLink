@@ -62,14 +62,14 @@ export function PlayerBar() {
     (async () => {
       try {
         const res = await fetch(streamUrl(current.id), { headers: authHeader() });
-        if (!res.ok) throw new Error(`Failed to load audio (${res.status})`);
+        if (!res.ok) throw new Error(`Ошибка загрузки аудио (${res.status})`);
         const blob = await res.blob();
         if (cancelled) return;
         const url = URL.createObjectURL(blob);
         blobRef.current = url;
         await ws.load(url);
       } catch (e: any) {
-        if (!cancelled) { setError(e?.message ?? "Failed to load"); setLoading(false); }
+        if (!cancelled) { setError(e?.message ?? "Не удалось загрузить трек"); setLoading(false); }
       }
     })();
 
@@ -94,7 +94,7 @@ export function PlayerBar() {
       </div>
 
       <div className="player-controls">
-        <button className="btn-ghost" onClick={prev} title="Previous">‹‹</button>
+        <button className="btn-ghost" onClick={prev} title="Предыдущий">‹‹</button>
         <button
           className="btn-primary"
           onClick={() => wsRef.current?.playPause()}
@@ -102,7 +102,7 @@ export function PlayerBar() {
         >
           {loading ? "…" : playing ? "❚❚" : "▶"}
         </button>
-        <button className="btn-ghost" onClick={next} title="Next">››</button>
+        <button className="btn-ghost" onClick={next} title="Следующий">››</button>
       </div>
 
       <div className="player-wave-wrap">
@@ -115,9 +115,9 @@ export function PlayerBar() {
         <input
           type="range" min={0} max={1} step={0.01}
           value={volume} onChange={e => setVolume(parseFloat(e.target.value))}
-          title="Volume"
+          title="Громкость"
         />
-        <button className="btn-ghost" onClick={stop} title="Close">✕</button>
+        <button className="btn-ghost" onClick={stop} title="Закрыть">✕</button>
       </div>
 
       {error && <div className="player-error">{error}</div>}

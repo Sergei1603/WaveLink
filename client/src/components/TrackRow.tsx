@@ -11,8 +11,8 @@ function fmtDuration(s: number) {
 }
 
 function fmtSize(b: number) {
-  if (b < 1024 * 1024) return `${(b / 1024).toFixed(0)} KB`;
-  return `${(b / 1024 / 1024).toFixed(1)} MB`;
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(0)} КБ`;
+  return `${(b / 1024 / 1024).toFixed(1)} МБ`;
 }
 
 interface Props {
@@ -32,7 +32,7 @@ export function TrackRow({ track, queue, onDelete, onRemoveFromCollection }: Pro
       <button
         className="track-play"
         onClick={() => play(track, queue)}
-        title="Play"
+        title="Воспроизвести"
       >▶</button>
       <div className="track-main">
         <div className="track-title">{track.title}</div>
@@ -42,7 +42,7 @@ export function TrackRow({ track, queue, onDelete, onRemoveFromCollection }: Pro
       <div className="track-meta">{fmtSize(track.fileSize)}</div>
       <div className="track-actions">
         <div className="menu-wrap">
-          <button className="btn-ghost" onClick={() => setMenuOpen(v => !v)}>＋</button>
+          <button className="btn-ghost" onClick={() => setMenuOpen(v => !v)} title="Добавить в коллекцию">＋</button>
           {menuOpen && (
             <AddToCollectionMenu
               trackId={track.id}
@@ -51,11 +51,11 @@ export function TrackRow({ track, queue, onDelete, onRemoveFromCollection }: Pro
           )}
         </div>
         {onRemoveFromCollection && (
-          <button className="btn-ghost" title="Remove from collection"
+          <button className="btn-ghost" title="Убрать из коллекции"
                   onClick={() => onRemoveFromCollection(track)}>−</button>
         )}
         {onDelete && (
-          <button className="btn-danger" title="Delete"
+          <button className="btn-danger" title="Удалить"
                   onClick={() => onDelete(track)}>✕</button>
         )}
       </div>

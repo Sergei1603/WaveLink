@@ -21,7 +21,7 @@ export function LibraryPage() {
   useEffect(() => { reload(); }, []);
 
   const onDelete = async (t: Track) => {
-    if (!confirm(`Delete "${t.title}"?`)) return;
+    if (!confirm(`Удалить "${t.title}"?`)) return;
     try { await deleteTrack(t.id); setTracks(prev => prev.filter(x => x.id !== t.id)); }
     catch (e: any) { alert(e.message); }
   };
@@ -35,25 +35,25 @@ export function LibraryPage() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Library</h1>
+        <h1>Библиотека</h1>
         <div className="page-actions">
           <input
             className="search"
-            placeholder="Search…"
+            placeholder="Поиск…"
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
           <button className="btn-primary" onClick={() => setUploadOpen(true)}>
-            Upload
+            Загрузить
           </button>
         </div>
       </div>
 
       {err && <div className="error">{err}</div>}
-      {loading && <div className="muted">Loading…</div>}
+      {loading && <div className="muted">Загрузка…</div>}
       {!loading && filtered.length === 0 && (
         <div className="empty">
-          {search ? "No tracks match your search." : "Your library is empty. Upload your first track!"}
+          {search ? "Треки не найдены." : "Библиотека пуста. Загрузите первый трек!"}
         </div>
       )}
 
