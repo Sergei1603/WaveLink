@@ -11,4 +11,5 @@ public class User
     public ICollection<Track> Tracks { get; set; } = new List<Track>();
     public ICollection<Collection> Collections { get; set; } = new List<Collection>();
     public ICollection<RefreshToken> RefreshTokens { get; set; } = new List<RefreshToken>();
+    public ICollection<SavedTrack> SavedTracks { get; set; } = new List<SavedTrack>();
 }

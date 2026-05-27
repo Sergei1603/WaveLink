@@ -23,11 +23,24 @@ public class TracksController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<PagedResponse<TrackResponse>>> List(
         [FromQuery] int page = 1,
-        [FromQuery] int limit = 20,
+        [FromQuery] int limit = 50,
+        [FromQuery] string? sort = null,
         CancellationToken ct = default)
     {
         var userId = CurrentUser.GetId(User);
-        return Ok(await _tracks.ListAsync(userId, page, limit, ct));
+        return Ok(await _tracks.ListAsync(userId, page, limit, ParseSort(sort), ct));
+    }
+
+    [HttpGet("public")]
+    public async Task<ActionResult<PagedResponse<TrackResponse>>> ListPublic(
+        [FromQuery] int page = 1,
+        [FromQuery] int limit = 50,
+        [FromQuery] string? search = null,
+        [FromQuery] string? sort = null,
+        CancellationToken ct = default)
+    {
+        var userId = CurrentUser.GetId(User);
+        return Ok(await _tracks.ListPublicAsync(userId, page, limit, search, ParseSort(sort), ct));
     }
 
     [HttpPost("upload")]
@@ -37,6 +50,29 @@ public class TracksController : ControllerBase
         var userId = CurrentUser.GetId(User);
         var track = await _tracks.UploadAsync(userId, form, ct);
         return CreatedAtAction(nameof(List), new { }, track);
+    }
+
+    [HttpPatch("{id:guid}")]
+    public async Task<ActionResult<TrackResponse>> Update(Guid id, UpdateTrackRequest request, CancellationToken ct)
+    {
+        var userId = CurrentUser.GetId(User);
+        return Ok(await _tracks.UpdateAsync(userId, id, request, ct));
+    }
+
+    [HttpPost("{id:guid}/save")]
+    public async Task<IActionResult> Save(Guid id, CancellationToken ct)
+    {
+        var userId = CurrentUser.GetId(User);
+        await _tracks.SaveAsync(userId, id, ct);
+        return NoContent();
+    }
+
+    [HttpDelete("{id:guid}/save")]
+    public async Task<IActionResult> Unsave(Guid id, CancellationToken ct)
+    {
+        var userId = CurrentUser.GetId(User);
+        await _tracks.UnsaveAsync(userId, id, ct);
+        return NoContent();
     }
 
     [HttpDelete("{id:guid}")]
@@ -51,7 +87,7 @@ public class TracksController : ControllerBase
     public async Task<IActionResult> Stream(Guid id, CancellationToken ct)
     {
         var userId = CurrentUser.GetId(User);
-        var track = await _tracks.GetOwnedAsync(userId, id, ct);
+        var track = await _tracks.GetAccessibleAsync(userId, id, ct);
 
         var totalSize = track.FileSize > 0
             ? track.FileSize
@@ -65,7 +101,6 @@ public class TracksController : ControllerBase
             return File(full, track.MimeType, enableRangeProcessing: false);
         }
 
-        // Parse "bytes=start-end"
         var (start, end) = ParseRange(rangeHeader, totalSize);
         var length = end - start + 1;
 
@@ -77,9 +112,15 @@ public class TracksController : ControllerBase
         return File(partial, track.MimeType, enableRangeProcessing: false);
     }
 
+    private static TrackSort ParseSort(string? sort) => sort?.ToLowerInvariant() switch
+    {
+        "artist" => TrackSort.Artist,
+        "title"  => TrackSort.Title,
+        _        => TrackSort.Recent
+    };
+
     private static (long Start, long End) ParseRange(string rangeHeader, long total)
     {
-        // bytes=start-end (end optional)
         var spec = rangeHeader.Replace("bytes=", "", StringComparison.OrdinalIgnoreCase).Trim();
         var parts = spec.Split('-', 2);
         if (parts.Length != 2) throw new AppException("Invalid Range header");

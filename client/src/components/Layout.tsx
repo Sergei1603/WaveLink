@@ -19,6 +19,7 @@ export function Layout() {
           <Link to="/" className="brand">WaveLink</Link>
           <nav className="nav">
             <NavLink to="/" end>Библиотека</NavLink>
+            <NavLink to="/public">Общий банк</NavLink>
             <NavLink to="/collections">Коллекции</NavLink>
             <NavLink to="/telegram">Telegram</NavLink>
           </nav>

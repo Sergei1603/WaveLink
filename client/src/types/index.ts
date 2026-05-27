@@ -12,7 +12,11 @@ export interface Track {
   fileSize: number;
   mimeType: string;
   uploadedAt: string;
+  isPublic: boolean;
+  isOwned: boolean;
 }
+
+export type TrackSort = "recent" | "artist" | "title";
 
 export interface PagedTracks {
   items: Track[];

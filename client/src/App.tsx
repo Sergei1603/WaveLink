@@ -5,6 +5,7 @@ import { Layout } from "./components/Layout";
 import { LoginPage } from "./pages/LoginPage";
 import { RegisterPage } from "./pages/RegisterPage";
 import { LibraryPage } from "./pages/LibraryPage";
+import { PublicBankPage } from "./pages/PublicBankPage";
 import { CollectionsPage } from "./pages/CollectionsPage";
 import { CollectionDetailPage } from "./pages/CollectionDetailPage";
 import { TelegramPage } from "./pages/TelegramPage";
@@ -24,6 +25,7 @@ export default function App() {
             }
           >
             <Route index element={<LibraryPage />} />
+            <Route path="/public" element={<PublicBankPage />} />
             <Route path="/collections" element={<CollectionsPage />} />
             <Route path="/collections/:id" element={<CollectionDetailPage />} />
             <Route path="/telegram" element={<TelegramPage />} />

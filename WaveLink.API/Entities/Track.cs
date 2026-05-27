@@ -11,7 +11,10 @@ public class Track
     public long FileSize { get; set; }
     public string MimeType { get; set; } = null!;
     public DateTime UploadedAt { get; set; }
+    public bool IsPublic { get; set; }
+    public bool IsDeletedByOwner { get; set; }
 
     public User User { get; set; } = null!;
     public ICollection<CollectionTrack> CollectionTracks { get; set; } = new List<CollectionTrack>();
+    public ICollection<SavedTrack> SavedBy { get; set; } = new List<SavedTrack>();
 }

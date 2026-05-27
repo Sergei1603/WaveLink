@@ -215,6 +215,19 @@ public class TelegramBotService : BackgroundService
             artist = "Unknown";
         }
 
+        var titleLower = title.Trim().ToLower();
+        var artistLower = artist.Trim().ToLower();
+        var hasDup = await db.Tracks.AnyAsync(t =>
+            ((t.UserId == user.Id && !t.IsDeletedByOwner) ||
+             db.SavedTracks.Any(s => s.UserId == user.Id && s.TrackId == t.Id))
+            && t.Title.ToLower() == titleLower
+            && t.Artist.ToLower() == artistLower, ct);
+        if (hasDup)
+        {
+            await bot.SendMessage(m.Chat.Id, $"Already in your library: {artist} - {title}", cancellationToken: ct);
+            return;
+        }
+
         var trackId = Guid.NewGuid();
         var key = $"{user.Id}/{trackId}/{fileName}";
 
@@ -234,7 +247,9 @@ public class TelegramBotService : BackgroundService
             FileKey = key,
             FileSize = size > 0 ? size : ms.Length,
             MimeType = mime,
-            UploadedAt = DateTime.UtcNow
+            UploadedAt = DateTime.UtcNow,
+            IsPublic = false,
+            IsDeletedByOwner = false
         });
         await db.SaveChangesAsync(ct);
 

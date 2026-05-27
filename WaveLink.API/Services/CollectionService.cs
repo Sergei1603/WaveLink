@@ -19,8 +19,9 @@ public interface ICollectionService
 public class CollectionService : ICollectionService
 {
     private readonly AppDbContext _db;
+    private readonly ITrackService _tracks;
 
-    public CollectionService(AppDbContext db) { _db = db; }
+    public CollectionService(AppDbContext db, ITrackService tracks) { _db = db; _tracks = tracks; }
 
     public async Task<IReadOnlyList<CollectionResponse>> ListAsync(Guid userId, CancellationToken ct)
     {
@@ -34,18 +35,14 @@ public class CollectionService : ICollectionService
     public async Task<CollectionDetailResponse> GetAsync(Guid userId, Guid collectionId, CancellationToken ct)
     {
         var collection = await GetOwnedAsync(userId, collectionId, ct);
-        var tracks = await _db.CollectionTracks
+        var raw = await _db.CollectionTracks
             .Where(ct2 => ct2.CollectionId == collectionId)
             .OrderByDescending(ct2 => ct2.AddedAt)
-            .Select(ct2 => new TrackResponse(
-                ct2.Track.Id,
-                ct2.Track.Title,
-                ct2.Track.Artist,
-                ct2.Track.Duration,
-                ct2.Track.FileSize,
-                ct2.Track.MimeType,
-                ct2.Track.UploadedAt))
+            .Select(ct2 => ct2.Track)
             .ToListAsync(ct);
+        var tracks = raw
+            .Select(t => new TrackResponse(t.Id, t.Title, t.Artist, t.Duration, t.FileSize, t.MimeType, t.UploadedAt, t.IsPublic, t.UserId == userId))
+            .ToList();
         return new CollectionDetailResponse(collection.Id, collection.Name, collection.CreatedAt, tracks);
     }
 
@@ -66,13 +63,10 @@ public class CollectionService : ICollectionService
     public async Task AddTrackAsync(Guid userId, Guid collectionId, Guid trackId, CancellationToken ct)
     {
         var collection = await GetOwnedAsync(userId, collectionId, ct);
-        var track = await _db.Tracks.FirstOrDefaultAsync(t => t.Id == trackId, ct)
-                    ?? throw AppException.NotFound("Track");
-        if (track.UserId != userId)
-            throw AppException.Forbidden("Track does not belong to user");
+        var track = await _tracks.GetAccessibleAsync(userId, trackId, ct);
 
         var exists = await _db.CollectionTracks
-            .AnyAsync(ct => ct.CollectionId == collectionId && ct.TrackId == trackId, ct);
+            .AnyAsync(x => x.CollectionId == collectionId && x.TrackId == trackId, ct);
         if (exists)
             throw AppException.Conflict("Track is already in this collection");
 

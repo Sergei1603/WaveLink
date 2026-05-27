@@ -13,6 +13,7 @@ public class AppDbContext : DbContext
     public DbSet<CollectionTrack> CollectionTracks => Set<CollectionTrack>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<TelegramLinkToken> TelegramLinkTokens => Set<TelegramLinkToken>();
+    public DbSet<SavedTrack> SavedTracks => Set<SavedTrack>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -32,9 +33,26 @@ public class AppDbContext : DbContext
             e.Property(x => x.Artist).IsRequired().HasMaxLength(512);
             e.Property(x => x.FileKey).IsRequired().HasMaxLength(1024);
             e.Property(x => x.MimeType).IsRequired().HasMaxLength(128);
+            e.Property(x => x.IsPublic).HasDefaultValue(false);
+            e.Property(x => x.IsDeletedByOwner).HasDefaultValue(false);
             e.HasOne(x => x.User)
                 .WithMany(u => u.Tracks)
                 .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => x.UserId);
+            e.HasIndex(x => new { x.IsPublic, x.IsDeletedByOwner });
+        });
+
+        b.Entity<SavedTrack>(e =>
+        {
+            e.HasKey(x => new { x.UserId, x.TrackId });
+            e.HasOne(x => x.User)
+                .WithMany(u => u.SavedTracks)
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Track)
+                .WithMany(t => t.SavedBy)
+                .HasForeignKey(x => x.TrackId)
                 .OnDelete(DeleteBehavior.Cascade);
             e.HasIndex(x => x.UserId);
         });
