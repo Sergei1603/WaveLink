@@ -4,6 +4,8 @@ using Telegram.Bot;
 using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
+using Telegram.Bot.Types.ReplyMarkups;
+using WaveLink.API.Common;
 using WaveLink.API.Data;
 using WaveLink.API.Entities;
 using WaveLink.API.Options;
@@ -26,18 +28,42 @@ public class TelegramBotService : BackgroundService
         _logger = logger;
     }
 
-    protected override Task ExecuteAsync(CancellationToken stoppingToken)
+    private static readonly BotCommand[] BotCommands =
+    {
+        new() { Command = "list",   Description = "Моя библиотека" },
+        new() { Command = "find",   Description = "Поиск в общем банке" },
+        new() { Command = "upload", Description = "Как загрузить трек" },
+        new() { Command = "get",    Description = "Скачать трек по названию" },
+        new() { Command = "link",   Description = "Привязать аккаунт" },
+        new() { Command = "help",   Description = "Список команд" }
+    };
+
+    private static ReplyKeyboardMarkup MainKeyboard { get; } = new(new[]
+    {
+        new KeyboardButton[] { "/list", "/find" },
+        new KeyboardButton[] { "/upload", "/help" }
+    })
+    {
+        ResizeKeyboard = true,
+        IsPersistent = true
+    };
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         if (!_options.Enabled || string.IsNullOrWhiteSpace(_options.BotToken))
         {
             _logger.LogInformation("Telegram bot disabled (set Telegram:Enabled=true and Telegram:BotToken to activate)");
-            return Task.CompletedTask;
+            return;
         }
 
         var bot = new TelegramBotClient(_options.BotToken);
+
+        try { await bot.SetMyCommands(BotCommands, cancellationToken: stoppingToken); }
+        catch (Exception ex) { _logger.LogWarning(ex, "Failed to register bot commands"); }
+
         var receiverOptions = new ReceiverOptions
         {
-            AllowedUpdates = new[] { UpdateType.Message }
+            AllowedUpdates = new[] { UpdateType.Message, UpdateType.CallbackQuery }
         };
 
         bot.StartReceiving(
@@ -47,11 +73,16 @@ public class TelegramBotService : BackgroundService
             cancellationToken: stoppingToken);
 
         _logger.LogInformation("Telegram bot started");
-        return Task.CompletedTask;
     }
 
     private async Task HandleUpdateAsync(ITelegramBotClient bot, Update update, CancellationToken ct)
     {
+        if (update.CallbackQuery is { } cb)
+        {
+            await SafeHandleCallbackAsync(bot, cb, ct);
+            return;
+        }
+
         if (update.Message is not { } message) return;
 
         try
@@ -66,23 +97,25 @@ public class TelegramBotService : BackgroundService
             if (text.StartsWith("/start")) await SendStartAsync(bot, message, ct);
             else if (text.StartsWith("/help")) await SendHelpAsync(bot, message, ct);
             else if (text.StartsWith("/link ")) await HandleLinkAsync(bot, message, text[6..].Trim(), ct);
-            else if (text.StartsWith("/list")) await HandleListAsync(bot, message, ct);
+            else if (text == "/list" || text.StartsWith("/list ")) await HandleListAsync(bot, message, ct);
             else if (text.StartsWith("/upload")) await bot.SendMessage(message.Chat.Id,
-                "Send me an audio file as a message and I'll add it to your library.", cancellationToken: ct);
+                "Отправьте мне аудиофайл, и я добавлю его в вашу библиотеку.", cancellationToken: ct);
             else if (text.StartsWith("/get ")) await HandleGetAsync(bot, message, text[5..].Trim(), ct);
-            else await bot.SendMessage(message.Chat.Id, "Unknown command. Try /help.", cancellationToken: ct);
+            else if (text == "/find" || text.StartsWith("/find "))
+                await HandleFindAsync(bot, message, text.Length > 5 ? text[6..].Trim() : "", ct);
+            else await bot.SendMessage(message.Chat.Id, "Неизвестная команда. Попробуйте /help.", cancellationToken: ct);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error handling Telegram update");
-            try { await bot.SendMessage(message.Chat.Id, $"Error: {ex.Message}", cancellationToken: ct); }
+            try { await bot.SendMessage(message.Chat.Id, $"Ошибка: {ex.Message}", cancellationToken: ct); }
             catch { /* ignore */ }
         }
     }
 
-    private Task HandleErrorAsync(ITelegramBotClient bot, Exception ex, CancellationToken ct)
+    private Task HandleErrorAsync(ITelegramBotClient bot, Exception ex, HandleErrorSource source, CancellationToken ct)
     {
-        _logger.LogError(ex, "Telegram polling error");
+        _logger.LogError(ex, "Telegram polling error ({Source})", source);
         return Task.CompletedTask;
     }
 
@@ -90,26 +123,30 @@ public class TelegramBotService : BackgroundService
 
     private static Task SendStartAsync(ITelegramBotClient bot, Message m, CancellationToken ct) =>
         bot.SendMessage(m.Chat.Id,
-            "Welcome to WaveLink!\n" +
-            "1. Open the web app and generate a link token.\n" +
-            "2. Send /link <token> here to connect this chat to your account.\n" +
-            "Use /help to see all commands.", cancellationToken: ct);
+            "Добро пожаловать в WaveLink!\n" +
+            "1. Откройте веб-приложение и сгенерируйте токен привязки.\n" +
+            "2. Отправьте сюда /link <токен>, чтобы связать этот чат с аккаунтом.\n" +
+            "Команда /help покажет все доступные команды.",
+            replyMarkup: MainKeyboard, cancellationToken: ct);
 
     private static Task SendHelpAsync(ITelegramBotClient bot, Message m, CancellationToken ct) =>
         bot.SendMessage(m.Chat.Id,
-            "Commands:\n" +
-            "/link <token> - link this chat to your WaveLink account\n" +
-            "/list - list your tracks\n" +
-            "/upload - upload a track (then send an audio file)\n" +
-            "/get <title> - search your library and receive the audio file\n" +
-            "/help - show this message", cancellationToken: ct);
+            "Команды:\n" +
+            "/link <токен> — привязать чат к аккаунту WaveLink\n" +
+            "/list — ваша библиотека (кнопки для скачивания)\n" +
+            "/upload — загрузить трек (затем отправьте аудиофайл)\n" +
+            "/get <название> — точный поиск в библиотеке и получение файла\n" +
+            "/find <запрос> — поиск по общему банку (кнопки для скачивания)\n" +
+            "/help — это сообщение",
+            replyMarkup: MainKeyboard, cancellationToken: ct);
 
     private async Task HandleLinkAsync(ITelegramBotClient bot, Message m, string token, CancellationToken ct)
     {
         using var scope = _services.CreateScope();
         var linker = scope.ServiceProvider.GetRequiredService<ITelegramLinkTokenService>();
         var user = await linker.ConsumeAsync(token, m.Chat.Id, ct);
-        await bot.SendMessage(m.Chat.Id, $"Linked to {user.Email}", cancellationToken: ct);
+        await bot.SendMessage(m.Chat.Id, $"Привязан к {user.Email}",
+            replyMarkup: MainKeyboard, cancellationToken: ct);
     }
 
     private async Task<WaveLink.API.Entities.User?> ResolveUserAsync(AppDbContext db, long chatId, CancellationToken ct) =>
@@ -122,24 +159,64 @@ public class TelegramBotService : BackgroundService
         var user = await ResolveUserAsync(db, m.Chat.Id, ct);
         if (user == null)
         {
-            await bot.SendMessage(m.Chat.Id, "This chat is not linked. Use /link <token>.", cancellationToken: ct);
+            await bot.SendMessage(m.Chat.Id, "Чат не привязан. Используйте /link <токен>.", cancellationToken: ct);
             return;
         }
 
         var tracks = await db.Tracks
-            .Where(t => t.UserId == user.Id)
+            .Where(t =>
+                (t.UserId == user.Id && !t.IsDeletedByOwner) ||
+                db.SavedTracks.Any(s => s.UserId == user.Id && s.TrackId == t.Id))
             .OrderByDescending(t => t.UploadedAt)
             .Take(20)
             .ToListAsync(ct);
 
         if (tracks.Count == 0)
         {
-            await bot.SendMessage(m.Chat.Id, "Your library is empty.", cancellationToken: ct);
+            await bot.SendMessage(m.Chat.Id, "Ваша библиотека пуста.", cancellationToken: ct);
             return;
         }
 
-        var text = string.Join("\n", tracks.Select((t, i) => $"{i + 1}. {t.Artist} - {t.Title}"));
-        await bot.SendMessage(m.Chat.Id, text, cancellationToken: ct);
+        var keyboard = BuildTrackKeyboard(tracks);
+        await bot.SendMessage(m.Chat.Id, "Ваша библиотека (выберите трек):",
+            replyMarkup: keyboard, cancellationToken: ct);
+    }
+
+    private async Task HandleFindAsync(ITelegramBotClient bot, Message m, string query, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            await bot.SendMessage(m.Chat.Id,
+                "Использование: /find <запрос> — поиск по общему банку.", cancellationToken: ct);
+            return;
+        }
+
+        using var scope = _services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var user = await ResolveUserAsync(db, m.Chat.Id, ct);
+        if (user == null)
+        {
+            await bot.SendMessage(m.Chat.Id, "Чат не привязан. Используйте /link <токен>.", cancellationToken: ct);
+            return;
+        }
+
+        var needle = $"%{query}%";
+        var tracks = await db.Tracks
+            .Where(t => !t.IsDeletedByOwner)
+            .Where(t => EF.Functions.ILike(t.Title, needle) || EF.Functions.ILike(t.Artist, needle))
+            .OrderByDescending(t => t.UploadedAt)
+            .Take(20)
+            .ToListAsync(ct);
+
+        if (tracks.Count == 0)
+        {
+            await bot.SendMessage(m.Chat.Id, $"По запросу \"{query}\" ничего не найдено.", cancellationToken: ct);
+            return;
+        }
+
+        var keyboard = BuildTrackKeyboard(tracks);
+        await bot.SendMessage(m.Chat.Id, $"Результаты поиска \"{query}\":",
+            replyMarkup: keyboard, cancellationToken: ct);
     }
 
     private async Task HandleGetAsync(ITelegramBotClient bot, Message m, string title, CancellationToken ct)
@@ -151,24 +228,98 @@ public class TelegramBotService : BackgroundService
         var user = await ResolveUserAsync(db, m.Chat.Id, ct);
         if (user == null)
         {
-            await bot.SendMessage(m.Chat.Id, "This chat is not linked. Use /link <token>.", cancellationToken: ct);
+            await bot.SendMessage(m.Chat.Id, "Чат не привязан. Используйте /link <токен>.", cancellationToken: ct);
             return;
         }
 
         var needle = $"%{title}%";
         var track = await db.Tracks
-            .Where(t => t.UserId == user.Id && EF.Functions.ILike(t.Title, needle))
+            .Where(t =>
+                ((t.UserId == user.Id && !t.IsDeletedByOwner) ||
+                 db.SavedTracks.Any(s => s.UserId == user.Id && s.TrackId == t.Id))
+                && EF.Functions.ILike(t.Title, needle))
             .FirstOrDefaultAsync(ct);
 
         if (track == null)
         {
-            await bot.SendMessage(m.Chat.Id, $"No track matching \"{title}\"", cancellationToken: ct);
+            await bot.SendMessage(m.Chat.Id, $"Трек по запросу \"{title}\" не найден.", cancellationToken: ct);
             return;
         }
 
+        await SendTrackAudioAsync(bot, m.Chat.Id, track, storage, ct);
+    }
+
+    private async Task SafeHandleCallbackAsync(ITelegramBotClient bot, CallbackQuery cb, CancellationToken ct)
+    {
+        try
+        {
+            await HandleCallbackAsync(bot, cb, ct);
+        }
+        catch (AppException ax)
+        {
+            try { await bot.AnswerCallbackQuery(cb.Id, ax.Message, showAlert: true, cancellationToken: ct); }
+            catch { /* ignore */ }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error handling Telegram callback");
+            try { await bot.AnswerCallbackQuery(cb.Id, "Ошибка обработки запроса", showAlert: true, cancellationToken: ct); }
+            catch { /* ignore */ }
+        }
+    }
+
+    private async Task HandleCallbackAsync(ITelegramBotClient bot, CallbackQuery cb, CancellationToken ct)
+    {
+        var data = cb.Data ?? "";
+        var chatId = cb.Message?.Chat.Id ?? cb.From.Id;
+
+        if (!data.StartsWith("p:") || !Guid.TryParseExact(data[2..], "N", out var trackId))
+        {
+            await bot.AnswerCallbackQuery(cb.Id, "Неизвестное действие", showAlert: true, cancellationToken: ct);
+            return;
+        }
+
+        using var scope = _services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var storage = scope.ServiceProvider.GetRequiredService<IMinioStorageService>();
+        var tracks = scope.ServiceProvider.GetRequiredService<ITrackService>();
+
+        var user = await ResolveUserAsync(db, chatId, ct);
+        if (user == null)
+        {
+            await bot.AnswerCallbackQuery(cb.Id, "Чат не привязан. Используйте /link <токен>.", showAlert: true, cancellationToken: ct);
+            return;
+        }
+
+        var track = await tracks.GetAccessibleAsync(user.Id, trackId, ct);
+
+        await bot.AnswerCallbackQuery(cb.Id, cancellationToken: ct);
+        await SendTrackAudioAsync(bot, chatId, track, storage, ct);
+    }
+
+    private static InlineKeyboardMarkup BuildTrackKeyboard(IEnumerable<Track> tracks)
+    {
+        var rows = tracks
+            .Select(t => new[]
+            {
+                InlineKeyboardButton.WithCallbackData(
+                    $"{t.Artist} — {t.Title}",
+                    $"p:{t.Id:N}")
+            })
+            .ToArray();
+        return new InlineKeyboardMarkup(rows);
+    }
+
+    private static async Task SendTrackAudioAsync(
+        ITelegramBotClient bot, long chatId, Track track,
+        IMinioStorageService storage, CancellationToken ct)
+    {
         await using var data = await storage.OpenReadAsync(track.FileKey, ct);
-        await bot.SendAudio(m.Chat.Id,
-            InputFile.FromStream(data, $"{track.Title}.mp3"),
+        var filename = Path.GetFileName(track.FileKey);
+        if (string.IsNullOrWhiteSpace(filename)) filename = $"{track.Title}.mp3";
+
+        await bot.SendAudio(chatId,
+            InputFile.FromStream(data, filename),
             title: track.Title,
             performer: track.Artist,
             duration: track.Duration,
@@ -184,7 +335,7 @@ public class TelegramBotService : BackgroundService
         var user = await ResolveUserAsync(db, m.Chat.Id, ct);
         if (user == null)
         {
-            await bot.SendMessage(m.Chat.Id, "This chat is not linked. Use /link <token>.", cancellationToken: ct);
+            await bot.SendMessage(m.Chat.Id, "Чат не привязан. Используйте /link <токен>.", cancellationToken: ct);
             return;
         }
 
@@ -224,7 +375,7 @@ public class TelegramBotService : BackgroundService
             && t.Artist.ToLower() == artistLower, ct);
         if (hasDup)
         {
-            await bot.SendMessage(m.Chat.Id, $"Already in your library: {artist} - {title}", cancellationToken: ct);
+            await bot.SendMessage(m.Chat.Id, $"Уже в библиотеке: {artist} — {title}", cancellationToken: ct);
             return;
         }
 
@@ -253,6 +404,6 @@ public class TelegramBotService : BackgroundService
         });
         await db.SaveChangesAsync(ct);
 
-        await bot.SendMessage(m.Chat.Id, $"Added: {artist} - {title}", cancellationToken: ct);
+        await bot.SendMessage(m.Chat.Id, $"Добавлено: {artist} — {title}", cancellationToken: ct);
     }
 }

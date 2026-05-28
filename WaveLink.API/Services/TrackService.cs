@@ -79,7 +79,7 @@ public class TrackService : ITrackService
         page = Math.Max(page, 1);
         limit = Math.Clamp(limit, 1, 200);
 
-        var query = _db.Tracks.Where(t => t.IsPublic && !t.IsDeletedByOwner && t.UserId != userId);
+        var query = _db.Tracks.Where(t => t.IsPublic && !t.IsDeletedByOwner);
 
         if (!string.IsNullOrWhiteSpace(search))
         {
