@@ -102,10 +102,10 @@ var app = builder.Build();
 
 // ---------- Pipeline ----------
 app.UseMiddleware<ErrorHandlingMiddleware>();
+app.MapOpenApi();
 
 if (app.Environment.IsDevelopment())
 {
-    app.MapOpenApi();
     app.MapScalarApiReference();
 }
 
