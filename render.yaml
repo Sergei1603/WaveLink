@@ -41,18 +41,18 @@ services:
       - key: Cors__AllowedOrigins
         sync: false
 
-      # S3-совместимое хранилище (Cloudflare R2 / Backblaze B2 / AWS S3 / собственный MinIO).
-      # Render free-tier не даёт persistent disk, поэтому держать MinIO здесь нецелесообразно.
+      # S3-совместимое хранилище — Yandex Object Storage.
+      # Endpoint и bucket не секретны, ключи сервисного аккаунта задаются в dashboard.
       - key: Minio__Endpoint
-        sync: false           # напр. <accountid>.r2.cloudflarestorage.com
+        value: storage.yandexcloud.net
       - key: Minio__AccessKey
-        sync: false
+        sync: false           # статический ключ сервисного аккаунта (роль storage.editor)
       - key: Minio__SecretKey
         sync: false
       - key: Minio__Bucket
         value: wavelink-tracks
       - key: Minio__UseSsl
-        value: "true"
+        value: "true"         # Yandex принимает только HTTPS
       - key: Minio__PresignedUrlMinutes
         value: "15"
 

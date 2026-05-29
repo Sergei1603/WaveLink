@@ -12,8 +12,13 @@ using WaveLink.API.Services;
 var builder = WebApplication.CreateBuilder(args);
 
 // ---------- Configuration / Options ----------
-var port1 = Environment.GetEnvironmentVariable("PORT") ?? "10000";
-builder.WebHost.UseUrls($"http://0.0.0.0:{port1}");
+// Render/контейнер задаёт порт через переменную PORT — слушаем его на всех интерфейсах.
+// Локально PORT не задан → используем applicationUrl из launchSettings.json (5000).
+var port1 = Environment.GetEnvironmentVariable("PORT");
+if (!string.IsNullOrEmpty(port1))
+{
+    builder.WebHost.UseUrls($"http://0.0.0.0:{port1}");
+}
 
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 builder.Services.Configure<MinioOptions>(builder.Configuration.GetSection(MinioOptions.SectionName));

@@ -20,6 +20,8 @@ Thumbs.db
 # User secrets
 **/secrets.json
 **/appsettings.*.local.json
+# Локальные секреты (ключи Yandex, токен Telegram) — не коммитим
+WaveLink.API/appsettings.Development.json
 
 # Node / frontend
 client/node_modules/

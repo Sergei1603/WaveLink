@@ -10,14 +10,40 @@ See [CLAUDE.md](CLAUDE.md) for the full architecture description.
 
 ## Quick start
 
+### Требования
+
+- [.NET 10 SDK](https://dotnet.microsoft.com/download)
+- [Node.js 18+ LTS](https://nodejs.org/)
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (для Postgres + MinIO)
+
+### 1. Инфраструктура
+
 ```powershell
-docker compose up -d                      # postgres + minio
+docker compose up -d
+```
+
+### 2. Backend
+
+```powershell
 dotnet run --project WaveLink.API
 ```
 
-- API: <http://localhost:5000>
-- Swagger: <http://localhost:5000/swagger>
-- MinIO console: <http://localhost:9001>
+### 3. Frontend
+
+```powershell
+cd client
+npm install       # только при первом запуске
+npm run dev
+```
+
+| Сервис | URL |
+|---|---|
+| API | <http://localhost:5000> |
+| Scalar (OpenAPI) | <http://localhost:5000/scalar/v1> |
+| Frontend | <http://localhost:5173> |
+| MinIO console | <http://localhost:9001> |
+
+Dev-сервер Vite автоматически проксирует `/api/*` на `http://localhost:5000` — отдельно ничего настраивать не нужно.
 
 ## Layout
 

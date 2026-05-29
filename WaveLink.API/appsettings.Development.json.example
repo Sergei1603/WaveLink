@@ -6,8 +6,12 @@
       "Microsoft.EntityFrameworkCore.Database.Command": "Warning"
     }
   },
+  "Minio": {
+    "AccessKey": "<статический-ключ-сервисного-аккаунта-Yandex>",
+    "SecretKey": "<секрет-ключа-Yandex>"
+  },
   "Telegram": {
     "Enabled": true,
-    "BotToken": "8691804397:AAE8QgXCUDVJxuhCp2FMBpR7TNltztI4ibA"
+    "BotToken": "<токен-от-BotFather>"
   }
 }
