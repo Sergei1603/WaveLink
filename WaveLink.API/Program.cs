@@ -22,8 +22,18 @@ var minio = builder.Configuration.GetSection(MinioOptions.SectionName).Get<Minio
             ?? throw new InvalidOperationException("Minio configuration missing");
 
 // ---------- EF Core ----------
-builder.Services.AddDbContext<AppDbContext>(opts =>
-    opts.UseNpgsql(builder.Configuration.GetConnectionString("Postgres")));
+var connectionString = builder.Configuration.GetConnectionString("Postgres")!;
+
+// Render передаёт строку в формате postgresql://, конвертируем в ADO.NET
+if (connectionString.StartsWith("postgresql://") || connectionString.StartsWith("postgres://"))
+{
+    var uri = new Uri(connectionString);
+    var userInfo = uri.UserInfo.Split(':');
+    connectionString = $"Host={uri.Host};Port={uri.Port};Database={uri.AbsolutePath.TrimStart('/')};Username={userInfo[0]};Password={userInfo[1]};SSL Mode=Require;Trust Server Certificate=true";
+}
+
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseNpgsql(connectionString));
 
 // ---------- MinIO ----------
 builder.Services.AddSingleton<IMinioClient>(_ =>
