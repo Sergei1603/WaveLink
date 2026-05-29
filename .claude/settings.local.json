@@ -5,7 +5,10 @@
       "Bash(dotnet --version)",
       "Bash(dotnet restore *)",
       "PowerShell(node --version)",
-      "PowerShell(npm --version)"
+      "PowerShell(npm --version)",
+      "Bash(npm root *)",
+      "Bash(npm ls *)",
+      "Bash(python C:/Users/UFAPC/AppData/Roaming/Claude/local-agent-mode-sessions/skills-plugin/dab8af49-c8ed-4215-9795-8842a844a046/d85c9365-f91a-4d1e-bbfc-5d57c5cf1c51/skills/pptx/scripts/office/soffice.py --headless --convert-to pdf WaveLink-Presentation.pptx)"
     ]
   }
 }
