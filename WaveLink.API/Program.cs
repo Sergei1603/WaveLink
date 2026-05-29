@@ -52,7 +52,8 @@ builder.Services.AddSingleton<IMinioClient>(_ =>
 {
     var client = new MinioClient()
         .WithEndpoint(minio.Endpoint)
-        .WithCredentials(minio.AccessKey, minio.SecretKey);
+        .WithCredentials(minio.AccessKey, minio.SecretKey)
+        .WithRegion("ru-central1");
     if (minio.UseSsl) client = client.WithSSL();
     return client.Build();
 });
