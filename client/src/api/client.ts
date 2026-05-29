@@ -2,6 +2,10 @@ import type { AuthTokens } from "../types";
 
 const TOKEN_KEY = "wavelink.tokens";
 
+export const API_BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
+export const apiUrl = (path: string) =>
+  path.startsWith("http") ? path : `${API_BASE}${path}`;
+
 export function getStoredTokens(): AuthTokens | null {
   const raw = localStorage.getItem(TOKEN_KEY);
   if (!raw) return null;
@@ -23,7 +27,7 @@ async function refreshTokens(): Promise<AuthTokens | null> {
 
   refreshPromise = (async () => {
     try {
-      const res = await fetch("/api/auth/refresh", {
+      const res = await fetch(apiUrl("/api/auth/refresh"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ refreshToken: current.refreshToken })
@@ -66,7 +70,7 @@ export async function api<T>(path: string, opts: RequestOptions = {}): Promise<T
       if (tokens) headers["Authorization"] = `Bearer ${tokens.accessToken}`;
     }
 
-    return fetch(path, {
+    return fetch(apiUrl(path), {
       method: opts.method ?? (opts.body || opts.formData ? "POST" : "GET"),
       headers,
       body: opts.formData

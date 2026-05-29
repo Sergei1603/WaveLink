@@ -1,4 +1,4 @@
-import { api } from "./client";
+import { api, apiUrl } from "./client";
 import type { PagedTracks, Track, TrackSort } from "../types";
 
 export function listTracks(page = 1, limit = 200, sort: TrackSort = "recent") {
@@ -38,5 +38,5 @@ export function deleteTrack(id: string) {
 }
 
 export function streamUrl(id: string) {
-  return `/api/tracks/${id}/stream`;
+  return apiUrl(`/api/tracks/${id}/stream`);
 }

@@ -64,8 +64,10 @@ builder.Services.AddAuthorization();
 
 // ---------- CORS ----------
 const string CorsPolicy = "WaveLinkClient";
+var allowedOrigins = (builder.Configuration["Cors:AllowedOrigins"] ?? "http://localhost:5173")
+    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 builder.Services.AddCors(o => o.AddPolicy(CorsPolicy, p =>
-    p.WithOrigins("http://localhost:5173")
+    p.WithOrigins(allowedOrigins)
      .AllowAnyHeader()
      .AllowAnyMethod()
      .WithExposedHeaders("Content-Range", "Accept-Ranges", "Content-Length")));

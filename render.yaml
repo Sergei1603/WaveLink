@@ -1,0 +1,80 @@
+databases:
+  - name: wavelink-postgres
+    plan: free
+    databaseName: wavelink
+    user: wavelink
+
+services:
+  # ---------- API (ASP.NET Core 10, Docker) ----------
+  - type: web
+    name: wavelink-api
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./WaveLink.API/Dockerfile
+    dockerContext: .
+    healthCheckPath: /openapi/v1.json
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+
+      # Postgres (Render автоматически прокидывает строку подключения).
+      - key: ConnectionStrings__Postgres
+        fromDatabase:
+          name: wavelink-postgres
+          property: connectionString
+
+      # JWT
+      - key: Jwt__Issuer
+        value: WaveLink
+      - key: Jwt__Audience
+        value: WaveLink
+      - key: Jwt__AccessTokenMinutes
+        value: "15"
+      - key: Jwt__RefreshTokenDays
+        value: "7"
+      - key: Jwt__Secret
+        generateValue: true   # Render сгенерирует случайный секрет
+
+      # CORS — заменить на реальный URL фронта после первого деплоя
+      - key: Cors__AllowedOrigins
+        sync: false
+
+      # S3-совместимое хранилище (Cloudflare R2 / Backblaze B2 / AWS S3 / собственный MinIO).
+      # Render free-tier не даёт persistent disk, поэтому держать MinIO здесь нецелесообразно.
+      - key: Minio__Endpoint
+        sync: false           # напр. <accountid>.r2.cloudflarestorage.com
+      - key: Minio__AccessKey
+        sync: false
+      - key: Minio__SecretKey
+        sync: false
+      - key: Minio__Bucket
+        value: wavelink-tracks
+      - key: Minio__UseSsl
+        value: "true"
+      - key: Minio__PresignedUrlMinutes
+        value: "15"
+
+      # Telegram
+      - key: Telegram__Enabled
+        value: "true"
+      - key: Telegram__BotToken
+        sync: false           # задать в Render dashboard
+
+  # ---------- Frontend (Vite static build) ----------
+  - type: web
+    name: wavelink-client
+    runtime: static
+    plan: free
+    region: frankfurt
+    rootDir: client
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./dist
+    pullRequestPreviewsEnabled: false
+    envVars:
+      - key: VITE_API_URL
+        sync: false           # напр. https://wavelink-api.onrender.com
+    routes:
+      - type: rewrite         # SPA fallback на index.html
+        source: /*
+        destination: /index.html
