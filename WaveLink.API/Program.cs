@@ -24,18 +24,23 @@ var minio = builder.Configuration.GetSection(MinioOptions.SectionName).Get<Minio
 // ---------- EF Core ----------
 var connectionString = builder.Configuration.GetConnectionString("Postgres")!;
 
-// Render передаёт строку в формате postgresql://, конвертируем в ADO.NET
 if (connectionString.StartsWith("postgresql://") || connectionString.StartsWith("postgres://"))
 {
-    var uri = new Uri(connectionString);
-    var userInfo = uri.UserInfo.Split(':');
+    // Заменяем схему на стандартную для Uri парсера
+    var normalized = connectionString
+        .Replace("postgresql://", "http://")
+        .Replace("postgres://", "http://");
+
+    var uri = new Uri(normalized);
+    var userInfo = uri.UserInfo.Split(':', 2); // 2 — чтобы не сломаться на : в пароле
     var host = uri.Host;
-    var port = uri.Port > 0 ? uri.Port : 5432; // fallback если порт не указан
+    var port = uri.Port > 0 ? uri.Port : 5432;
     var database = uri.AbsolutePath.TrimStart('/');
-    var username = userInfo[0];
-    var password = Uri.UnescapeDataString(userInfo[1]); // на случай спецсимволов в пароле
+    var username = Uri.UnescapeDataString(userInfo[0]);
+    var password = Uri.UnescapeDataString(userInfo[1]);
 
     connectionString = $"Host={host};Port={port};Database={database};Username={username};Password={password};SSL Mode=Require;Trust Server Certificate=true";
+    Console.WriteLine($"[DEBUG] Parsed connection string host: {host}, port: {port}, db: {database}");
 }
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(connectionString));
