@@ -3,6 +3,7 @@ databases:
     plan: free
     databaseName: wavelink
     user: wavelink
+    region: frankfurt
 
 services:
   # ---------- API (ASP.NET Core 10, Docker) ----------
