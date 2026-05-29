@@ -29,9 +29,14 @@ if (connectionString.StartsWith("postgresql://") || connectionString.StartsWith(
 {
     var uri = new Uri(connectionString);
     var userInfo = uri.UserInfo.Split(':');
-    connectionString = $"Host={uri.Host};Port={uri.Port};Database={uri.AbsolutePath.TrimStart('/')};Username={userInfo[0]};Password={userInfo[1]};SSL Mode=Require;Trust Server Certificate=true";
-}
+    var host = uri.Host;
+    var port = uri.Port > 0 ? uri.Port : 5432; // fallback если порт не указан
+    var database = uri.AbsolutePath.TrimStart('/');
+    var username = userInfo[0];
+    var password = Uri.UnescapeDataString(userInfo[1]); // на случай спецсимволов в пароле
 
+    connectionString = $"Host={host};Port={port};Database={database};Username={username};Password={password};SSL Mode=Require;Trust Server Certificate=true";
+}
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(connectionString));
 
