@@ -7,6 +7,7 @@ stream it via a browser player, and interact with the same library through a Tel
 - **Frontend:** React + TypeScript + Vite (in `/client`, scaffold separately) · wavesurfer.js
 
 See [CLAUDE.md](CLAUDE.md) for the full architecture description.
+Production deploy on your own VPS: [DEPLOY_VPS.md](DEPLOY_VPS.md).
 
 ## Quick start
 

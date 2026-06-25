@@ -1,0 +1,90 @@
+# Прод-стек для VPS на ГОТОВЫХ образах из ghcr.io (собраны в GitHub Actions).
+# На сервере НЕ собирается ничего — только тянутся образы. Хватает ~1 ГБ RAM.
+#
+# Запуск:
+#   docker compose -f docker-compose.deploy.yml --env-file .env.prod pull
+#   docker compose -f docker-compose.deploy.yml --env-file .env.prod up -d
+#
+# IMAGE_TAG в .env.prod выбирает версию образа (по умолчанию latest).
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: wavelink-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [wavelink]
+
+  minio:
+    image: minio/minio:latest
+    container_name: wavelink-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "127.0.0.1:9001:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [wavelink]
+
+  api:
+    image: ghcr.io/sergei1603/wavelink-api:${IMAGE_TAG:-latest}
+    container_name: wavelink-api
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      PORT: "8080"
+      ConnectionStrings__Postgres: "Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
+      Jwt__Issuer: WaveLink
+      Jwt__Audience: WaveLink
+      Jwt__Secret: ${JWT_SECRET}
+      Jwt__AccessTokenMinutes: "15"
+      Jwt__RefreshTokenDays: "7"
+      Minio__Endpoint: "minio:9000"
+      Minio__AccessKey: ${MINIO_ROOT_USER}
+      Minio__SecretKey: ${MINIO_ROOT_PASSWORD}
+      Minio__Bucket: wavelink-tracks
+      Minio__UseSsl: "false"
+      Minio__PresignedUrlMinutes: "15"
+      Telegram__Enabled: ${TELEGRAM_ENABLED:-false}
+      Telegram__BotToken: ${TELEGRAM_BOT_TOKEN:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks: [wavelink]
+
+  web:
+    image: ghcr.io/sergei1603/wavelink-web:${IMAGE_TAG:-latest}
+    container_name: wavelink-web
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+    networks: [wavelink]
+
+volumes:
+  postgres_data:
+  minio_data:
+
+networks:
+  wavelink:

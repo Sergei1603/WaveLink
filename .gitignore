@@ -30,3 +30,6 @@ client/.vite/
 
 # Docker volumes (local only)
 .docker-data/
+
+# Прод-секреты VPS — не коммитим
+.env.prod
