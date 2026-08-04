@@ -69,6 +69,8 @@ builder.Services.AddScoped<ITrackService, TrackService>();
 builder.Services.AddScoped<ICollectionService, CollectionService>();
 builder.Services.AddScoped<IMinioStorageService, MinioStorageService>();
 builder.Services.AddScoped<ITelegramLinkTokenService, TelegramLinkTokenService>();
+builder.Services.AddSingleton<ITelegramClientProvider, TelegramClientProvider>();
+builder.Services.AddScoped<ITelegramDeliveryService, TelegramDeliveryService>();
 builder.Services.AddHostedService<TelegramBotService>();
 
 // ---------- Auth ----------

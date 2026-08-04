@@ -105,11 +105,16 @@ All routes require JWT bearer auth except those under `/api/auth/*`.
 | DELETE | `/api/collections/{id}` | |
 | GET  | `/api/telegram/generate-link-token` | one-time 10-min token |
 | POST | `/api/telegram/link` | returns 410; linking is completed via the bot |
+| GET  | `/api/telegram/status` | `{ botEnabled, linked }` |
+| POST | `/api/telegram/send` | `{ trackId }` → pushes the audio into the caller's bot chat |
 
 ## Telegram bot
 
 The bot polls (no webhook) inside `TelegramBotService : BackgroundService`. It is
 disabled by default — set `Telegram:Enabled=true` and `Telegram:BotToken` to activate.
+The `ITelegramBotClient` itself is owned by the singleton `TelegramClientProvider`
+(`Client == null` when disabled), so both the polling service and `TelegramDeliveryService`
+(used by `TelegramController`) share one client.
 
 Commands:
 
@@ -117,11 +122,19 @@ Commands:
 - `/link <token>` — pairs the chat with the WaveLink user via `TelegramLinkTokenService`
 - `/list` — shows the 20 most recent tracks
 - `/upload` — prompts the user; on any subsequent audio message or audio document, the
-  bot downloads the file, uploads it to MinIO, and creates a `Track` row
+  bot downloads the file, uploads it to MinIO, and creates a `Track` row with
+  `IsPublic = true` (bot uploads always go straight into the public bank, unlike web
+  uploads where the user picks)
 - `/get <title>` — case-insensitive ILIKE search; sends the first match as audio
 
 All bot handlers resolve the WaveLink user through `User.TelegramChatId`. Unlinked chats
 get a hint to run `/link`.
+
+The reverse direction (web → chat) goes through `POST /api/telegram/send`: the service
+resolves `User.TelegramChatId`, checks access via `ITrackService.GetAccessibleAsync`, and
+streams the object from MinIO into `SendAudio`. The frontend shows the ✈ button on a
+track row only when `GET /api/telegram/status` reports `linked` (cached in
+`TelegramContext`).
 
 ## File storage (MinIO)
 

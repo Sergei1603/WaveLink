@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
 using Telegram.Bot;
 using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
@@ -8,22 +7,21 @@ using Telegram.Bot.Types.ReplyMarkups;
 using WaveLink.API.Common;
 using WaveLink.API.Data;
 using WaveLink.API.Entities;
-using WaveLink.API.Options;
 
 namespace WaveLink.API.Services;
 
 public class TelegramBotService : BackgroundService
 {
-    private readonly TelegramOptions _options;
+    private readonly ITelegramClientProvider _telegram;
     private readonly IServiceProvider _services;
     private readonly ILogger<TelegramBotService> _logger;
 
     public TelegramBotService(
-        IOptions<TelegramOptions> options,
+        ITelegramClientProvider telegram,
         IServiceProvider services,
         ILogger<TelegramBotService> logger)
     {
-        _options = options.Value;
+        _telegram = telegram;
         _services = services;
         _logger = logger;
     }
@@ -50,13 +48,11 @@ public class TelegramBotService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (!_options.Enabled || string.IsNullOrWhiteSpace(_options.BotToken))
+        if (_telegram.Client is not { } bot)
         {
             _logger.LogInformation("Telegram bot disabled (set Telegram:Enabled=true and Telegram:BotToken to activate)");
             return;
         }
-
-        var bot = new TelegramBotClient(_options.BotToken);
 
         try { await bot.SetMyCommands(BotCommands, cancellationToken: stoppingToken); }
         catch (Exception ex) { _logger.LogWarning(ex, "Failed to register bot commands"); }
@@ -99,7 +95,8 @@ public class TelegramBotService : BackgroundService
             else if (text.StartsWith("/link ")) await HandleLinkAsync(bot, message, text[6..].Trim(), ct);
             else if (text == "/list" || text.StartsWith("/list ")) await HandleListAsync(bot, message, ct);
             else if (text.StartsWith("/upload")) await bot.SendMessage(message.Chat.Id,
-                "Отправьте мне аудиофайл, и я добавлю его в вашу библиотеку.", cancellationToken: ct);
+                "Отправьте мне аудиофайл — он попадёт в вашу библиотеку и сразу станет доступен в общем банке.",
+                cancellationToken: ct);
             else if (text.StartsWith("/get ")) await HandleGetAsync(bot, message, text[5..].Trim(), ct);
             else if (text == "/find" || text.StartsWith("/find "))
                 await HandleFindAsync(bot, message, text.Length > 5 ? text[6..].Trim() : "", ct);
@@ -134,7 +131,7 @@ public class TelegramBotService : BackgroundService
             "Команды:\n" +
             "/link <токен> — привязать чат к аккаунту WaveLink\n" +
             "/list — ваша библиотека (кнопки для скачивания)\n" +
-            "/upload — загрузить трек (затем отправьте аудиофайл)\n" +
+            "/upload — загрузить трек (затем отправьте аудиофайл; он сразу станет публичным)\n" +
             "/get <название> — точный поиск в библиотеке и получение файла\n" +
             "/find <запрос> — поиск по общему банку (кнопки для скачивания)\n" +
             "/help — это сообщение",
@@ -310,21 +307,10 @@ public class TelegramBotService : BackgroundService
         return new InlineKeyboardMarkup(rows);
     }
 
-    private static async Task SendTrackAudioAsync(
+    private static Task SendTrackAudioAsync(
         ITelegramBotClient bot, long chatId, Track track,
-        IMinioStorageService storage, CancellationToken ct)
-    {
-        await using var data = await storage.OpenReadAsync(track.FileKey, ct);
-        var filename = Path.GetFileName(track.FileKey);
-        if (string.IsNullOrWhiteSpace(filename)) filename = $"{track.Title}.mp3";
-
-        await bot.SendAudio(chatId,
-            InputFile.FromStream(data, filename),
-            title: track.Title,
-            performer: track.Artist,
-            duration: track.Duration,
-            cancellationToken: ct);
-    }
+        IMinioStorageService storage, CancellationToken ct) =>
+        TelegramDeliveryService.SendTrackAudioAsync(bot, chatId, track, storage, ct);
 
     private async Task HandleAudioAsync(ITelegramBotClient bot, Message m, CancellationToken ct)
     {
@@ -399,11 +385,13 @@ public class TelegramBotService : BackgroundService
             FileSize = size > 0 ? size : ms.Length,
             MimeType = mime,
             UploadedAt = DateTime.UtcNow,
-            IsPublic = false,
+            // Загрузки через бота сразу попадают в общий банк.
+            IsPublic = true,
             IsDeletedByOwner = false
         });
         await db.SaveChangesAsync(ct);
 
-        await bot.SendMessage(m.Chat.Id, $"Добавлено: {artist} — {title}", cancellationToken: ct);
+        await bot.SendMessage(m.Chat.Id,
+            $"Добавлено: {artist} — {title}\nТрек опубликован в общем банке.", cancellationToken: ct);
     }
 }

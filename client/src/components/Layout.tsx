@@ -1,6 +1,7 @@
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { PlayerProvider } from "../player/PlayerContext";
+import { TelegramProvider } from "../telegram/TelegramContext";
 import { PlayerBar } from "./PlayerBar";
 
 export function Layout() {
@@ -13,6 +14,7 @@ export function Layout() {
   };
 
   return (
+    <TelegramProvider>
     <PlayerProvider>
       <div className="app-shell">
         <header className="topbar">
@@ -36,5 +38,6 @@ export function Layout() {
         <PlayerBar />
       </div>
     </PlayerProvider>
+    </TelegramProvider>
   );
 }

@@ -9,6 +9,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 		CLAUDE.md = CLAUDE.md
 		docker-compose.yml = docker-compose.yml
 		README.md = README.md
+		Планы.md = Планы.md
 	EndProjectSection
 EndProject
 Global

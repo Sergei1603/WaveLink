@@ -6,4 +6,8 @@ public record GenerateLinkTokenResponse(string Token, DateTime ExpiresAt);
 
 public record LinkTelegramRequest([Required] string Token);
 
+public record TelegramStatusResponse(bool BotEnabled, bool Linked);
+
+public record SendTrackToTelegramRequest([Required] Guid TrackId);
+
 public record ErrorResponse(string Error, int StatusCode);

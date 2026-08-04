@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { generateTelegramToken } from "../api/telegram";
+import { useTelegram } from "../telegram/TelegramContext";
 
 export function TelegramPage() {
+  const { linked, botEnabled, refresh } = useTelegram();
   const [token, setToken] = useState<string | null>(null);
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -27,6 +29,15 @@ export function TelegramPage() {
       <div className="card-stack">
         <div className="card">
           <h3>Привязать Telegram-аккаунт</h3>
+
+          <p className="muted">
+            {!botEnabled
+              ? "Бот сейчас отключён на сервере."
+              : linked
+                ? "Чат привязан — в списках треков доступна кнопка ✈ для отправки трека в бот."
+                : "Чат ещё не привязан."}
+          </p>
+
           <ol className="steps">
             <li>Откройте бота WaveLink в Telegram и нажмите <code>/start</code>.</li>
             <li>Нажмите кнопку ниже, чтобы сгенерировать одноразовый токен (действует 10 минут).</li>
@@ -36,14 +47,20 @@ export function TelegramPage() {
                 <li><code>/list</code> — ваша библиотека в виде кнопок (нажатие = получение файла).</li>
                 <li><code>/find &lt;запрос&gt;</code> — поиск по общему банку (кнопки для скачивания).</li>
                 <li><code>/get &lt;название&gt;</code> — точный поиск в библиотеке.</li>
-                <li>Отправка аудиофайла — добавление трека в библиотеку.</li>
+                <li>Отправка аудиофайла — трек попадает в библиотеку и сразу публикуется в общем банке.</li>
+                <li>Кнопка ✈ у трека в веб-интерфейсе — отправка файла в чат с ботом.</li>
               </ul>
             </li>
           </ol>
 
-          <button className="btn-primary" onClick={gen} disabled={busy}>
-            {busy ? "Генерация…" : "Сгенерировать токен"}
-          </button>
+          <div className="token-actions">
+            <button className="btn-primary" onClick={gen} disabled={busy}>
+              {busy ? "Генерация…" : "Сгенерировать токен"}
+            </button>
+            <button className="btn-ghost" onClick={() => void refresh()}>
+              Проверить привязку
+            </button>
+          </div>
 
           {err && <div className="error">{err}</div>}
 

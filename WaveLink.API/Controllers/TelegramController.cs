@@ -12,8 +12,13 @@ namespace WaveLink.API.Controllers;
 public class TelegramController : ControllerBase
 {
     private readonly ITelegramLinkTokenService _linker;
+    private readonly ITelegramDeliveryService _delivery;
 
-    public TelegramController(ITelegramLinkTokenService linker) { _linker = linker; }
+    public TelegramController(ITelegramLinkTokenService linker, ITelegramDeliveryService delivery)
+    {
+        _linker = linker;
+        _delivery = delivery;
+    }
 
     [HttpGet("generate-link-token")]
     public async Task<ActionResult<GenerateLinkTokenResponse>> Generate(CancellationToken ct)
@@ -21,6 +26,21 @@ public class TelegramController : ControllerBase
         var userId = CurrentUser.GetId(User);
         var (token, expires) = await _linker.GenerateAsync(userId, ct);
         return Ok(new GenerateLinkTokenResponse(token, expires));
+    }
+
+    [HttpGet("status")]
+    public async Task<ActionResult<TelegramStatusResponse>> Status(CancellationToken ct)
+    {
+        var userId = CurrentUser.GetId(User);
+        return Ok(await _delivery.GetStatusAsync(userId, ct));
+    }
+
+    [HttpPost("send")]
+    public async Task<IActionResult> Send(SendTrackToTelegramRequest request, CancellationToken ct)
+    {
+        var userId = CurrentUser.GetId(User);
+        await _delivery.SendTrackAsync(userId, request.TrackId, ct);
+        return NoContent();
     }
 
     // Web-side completion of linking is performed by the Telegram bot itself

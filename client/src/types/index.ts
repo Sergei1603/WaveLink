@@ -44,6 +44,11 @@ export interface TelegramLinkToken {
   expiresAt: string;
 }
 
+export interface TelegramStatus {
+  botEnabled: boolean;
+  linked: boolean;
+}
+
 export interface ApiErrorResponse {
   error: string;
   statusCode: number;

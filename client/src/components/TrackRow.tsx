@@ -1,6 +1,8 @@
 import { useState } from "react";
 import type { Track } from "../types";
 import { usePlayer } from "../player/PlayerContext";
+import { useTelegram } from "../telegram/TelegramContext";
+import { sendTrackToTelegram } from "../api/telegram";
 import { AddToCollectionMenu } from "./AddToCollectionMenu";
 import { EditTrackModal } from "./EditTrackModal";
 
@@ -31,9 +33,25 @@ export function TrackRow({
   track, queue, onDelete, onUpdated, onRemoveFromCollection, onUnsave, onSave, isSaved
 }: Props) {
   const { play, current } = usePlayer();
+  const { linked: tgLinked } = useTelegram();
   const [menuOpen, setMenuOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [tgState, setTgState] = useState<"idle" | "sending" | "sent">("idle");
+  const [tgError, setTgError] = useState<string | null>(null);
   const isCurrent = current?.id === track.id;
+
+  const sendToTelegram = async () => {
+    setTgError(null);
+    setTgState("sending");
+    try {
+      await sendTrackToTelegram(track.id);
+      setTgState("sent");
+      setTimeout(() => setTgState("idle"), 2000);
+    } catch (e: any) {
+      setTgError(e.message);
+      setTgState("idle");
+    }
+  };
 
   return (
     <div className={`track-row ${isCurrent ? "is-current" : ""}`}>
@@ -53,6 +71,14 @@ export function TrackRow({
       <div className="track-meta">{fmtDuration(track.duration)}</div>
       <div className="track-meta">{fmtSize(track.fileSize)}</div>
       <div className="track-actions">
+        {tgLinked && (
+          <button
+            className="btn-ghost"
+            disabled={tgState === "sending"}
+            title={tgError ?? "Отправить в Telegram"}
+            onClick={sendToTelegram}
+          >{tgState === "sending" ? "…" : tgState === "sent" ? "✓" : "✈"}</button>
+        )}
         {onSave && (
           isSaved
             ? <span className="muted small">В библиотеке</span>
