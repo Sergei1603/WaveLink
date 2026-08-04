@@ -52,6 +52,19 @@ code {
 }
 .btn-ghost:hover { background: var(--bg-3); border-color: var(--accent); }
 
+/* square button holding a single glyph or svg icon */
+.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 30px;
+  padding: 0;
+}
+.btn-icon:disabled { opacity: .5; cursor: default; }
+.btn-icon .icon { width: 15px; height: 15px; }
+.btn-icon.is-sent { color: var(--accent); border-color: var(--accent); }
+
 .btn-danger {
   background: transparent;
   color: var(--danger);

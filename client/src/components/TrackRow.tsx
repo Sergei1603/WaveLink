@@ -18,6 +18,14 @@ function fmtSize(b: number) {
   return `${(b / 1024 / 1024).toFixed(1)} МБ`;
 }
 
+function TelegramIcon() {
+  return (
+    <svg className="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M21.94 4.3 18.9 19.1c-.23 1.01-.83 1.26-1.68.79l-4.65-3.43-2.24 2.16c-.25.25-.46.46-.94.46l.33-4.74 8.63-7.8c.38-.33-.08-.52-.58-.19L6.11 13.06l-4.59-1.44c-1-.31-1.02-1 .21-1.48l17.95-6.92c.83-.3 1.56.2 1.26 1.08Z" />
+    </svg>
+  );
+}
+
 interface Props {
   track: Track;
   queue: Track[];
@@ -73,11 +81,13 @@ export function TrackRow({
       <div className="track-actions">
         {tgLinked && (
           <button
-            className="btn-ghost"
+            className={`btn-ghost btn-icon ${tgState === "sent" ? "is-sent" : ""}`}
             disabled={tgState === "sending"}
             title={tgError ?? "Отправить в Telegram"}
             onClick={sendToTelegram}
-          >{tgState === "sending" ? "…" : tgState === "sent" ? "✓" : "✈"}</button>
+          >
+            {tgState === "sent" ? "✓" : <TelegramIcon />}
+          </button>
         )}
         {onSave && (
           isSaved
