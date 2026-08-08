@@ -1,28 +1,27 @@
-import { useEffect, useState } from "react";
-import { addTrackToCollection, listCollections } from "../api/collections";
-import type { CollectionSummary } from "../types";
+import { useState } from "react";
+import { addTrackToCollection } from "../api/collections";
+import { useAppShell } from "../app/AppShellContext";
 
 export function AddToCollectionMenu({ trackId, onDone }: { trackId: string; onDone: () => void }) {
-  const [items, setItems] = useState<CollectionSummary[]>([]);
+  const { collections, refreshCollections } = useAppShell();
   const [err, setErr] = useState<string | null>(null);
 
-  useEffect(() => {
-    listCollections().then(setItems).catch(e => setErr(e.message));
-  }, []);
-
   const add = async (id: string) => {
-    try { await addTrackToCollection(id, trackId); onDone(); }
-    catch (e: any) { setErr(e.message); }
+    try {
+      await addTrackToCollection(id, trackId);
+      void refreshCollections();
+      onDone();
+    } catch (e: any) { setErr(e.message); }
   };
 
   return (
     <div className="popover">
       <div className="popover-title">Добавить в коллекцию</div>
       {err && <div className="error">{err}</div>}
-      {items.length === 0 && <div className="muted">Коллекций ещё нет.</div>}
-      {items.map(c => (
-        <button key={c.id} className="popover-item" onClick={() => add(c.id)}>
-          {c.name} <span className="muted">({c.trackCount})</span>
+      {collections.length === 0 && <div className="muted small" style={{ padding: "6px 8px" }}>Коллекций ещё нет.</div>}
+      {collections.map(c => (
+        <button key={c.id} type="button" className="popover-item" onClick={() => add(c.id)}>
+          {c.name} <span className="muted small">({c.trackCount})</span>
         </button>
       ))}
     </div>

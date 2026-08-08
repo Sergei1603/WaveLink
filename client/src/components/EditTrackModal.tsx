@@ -34,25 +34,32 @@ export function EditTrackModal({ track, onClose, onSaved }: Props) {
   };
 
   return (
-    <div className="modal-backdrop" onMouseDown={onClose}>
-      <form className="modal" onMouseDown={e => e.stopPropagation()} onSubmit={submit}>
-        <h2>Редактировать трек</h2>
-        <label>
-          Название
-          <input value={title} onChange={e => setTitle(e.target.value)} required />
-        </label>
-        <label>
-          Исполнитель
-          <input value={artist} onChange={e => setArtist(e.target.value)} required />
-        </label>
-        <label className="checkbox-row">
+    <div className="dialog-backdrop" onMouseDown={onClose}>
+      <form className="dialog" onMouseDown={e => e.stopPropagation()} onSubmit={submit}>
+        <div className="dialog-title">Редактировать трек</div>
+
+        <div className="field">
+          <label htmlFor="edit-title">Название</label>
+          <input id="edit-title" className="input" value={title}
+                 onChange={e => setTitle(e.target.value)} required />
+        </div>
+        <div className="field">
+          <label htmlFor="edit-artist">Исполнитель</label>
+          <input id="edit-artist" className="input" value={artist}
+                 onChange={e => setArtist(e.target.value)} required />
+        </div>
+
+        <label className="checkbox">
           <input type="checkbox" checked={isPublic} onChange={e => setIsPublic(e.target.checked)} />
-          <span>Публичный трек (виден всем в Общем банке)</span>
+          <span className="dot" />
+          <span>Публичный трек — виден всем в Общем банке</span>
         </label>
+
         {err && <div className="error">{err}</div>}
-        <div className="modal-actions">
-          <button type="button" className="btn-ghost" onClick={onClose}>Отмена</button>
-          <button type="submit" className="btn-primary" disabled={busy}>
+
+        <div className="dialog-actions">
+          <button type="button" className="btn btn-secondary" onClick={onClose}>Отмена</button>
+          <button type="submit" className="btn btn-primary" disabled={busy}>
             {busy ? "Сохранение…" : "Сохранить"}
           </button>
         </div>

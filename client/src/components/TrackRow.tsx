@@ -5,6 +5,7 @@ import { useTelegram } from "../telegram/TelegramContext";
 import { sendTrackToTelegram } from "../api/telegram";
 import { AddToCollectionMenu } from "./AddToCollectionMenu";
 import { EditTrackModal } from "./EditTrackModal";
+import { TelegramIcon } from "./Icons";
 
 function fmtDuration(s: number) {
   if (!s) return "—";
@@ -18,17 +19,11 @@ function fmtSize(b: number) {
   return `${(b / 1024 / 1024).toFixed(1)} МБ`;
 }
 
-function TelegramIcon() {
-  return (
-    <svg className="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <path d="M21.94 4.3 18.9 19.1c-.23 1.01-.83 1.26-1.68.79l-4.65-3.43-2.24 2.16c-.25.25-.46.46-.94.46l.33-4.74 8.63-7.8c.38-.33-.08-.52-.58-.19L6.11 13.06l-4.59-1.44c-1-.31-1.02-1 .21-1.48l17.95-6.92c.83-.3 1.56.2 1.26 1.08Z" />
-    </svg>
-  );
-}
-
 interface Props {
   track: Track;
   queue: Track[];
+  /** 1-based position, shown in the index column and swapped for ▶ on hover. */
+  index?: number;
   onDelete?: (track: Track) => void;
   onUpdated?: (track: Track) => void;
   onRemoveFromCollection?: (track: Track) => void;
@@ -38,7 +33,7 @@ interface Props {
 }
 
 export function TrackRow({
-  track, queue, onDelete, onUpdated, onRemoveFromCollection, onUnsave, onSave, isSaved
+  track, queue, index, onDelete, onUpdated, onRemoveFromCollection, onUnsave, onSave, isSaved
 }: Props) {
   const { play, current } = usePlayer();
   const { linked: tgLinked } = useTelegram();
@@ -47,6 +42,7 @@ export function TrackRow({
   const [tgState, setTgState] = useState<"idle" | "sending" | "sent">("idle");
   const [tgError, setTgError] = useState<string | null>(null);
   const isCurrent = current?.id === track.id;
+  const isPublicBank = !!onSave;
 
   const sendToTelegram = async () => {
     setTgError(null);
@@ -61,77 +57,89 @@ export function TrackRow({
     }
   };
 
+  const tags = (
+    <div className="track-tags">
+      {track.isPublic && track.isOwned && <span className="tag tag-accent">Public</span>}
+      {!track.isOwned && <span className="tag tag-neutral">Saved</span>}
+    </div>
+  );
+
   return (
-    <div className={`track-row ${isCurrent ? "is-current" : ""}`}>
-      <button
-        className="track-play"
-        onClick={() => play(track, queue)}
-        title="Воспроизвести"
-      >▶</button>
+    <div
+      className={`track-row ${isPublicBank ? "track-row-public" : ""} ${isCurrent ? "is-current" : ""}`}
+      onDoubleClick={() => play(track, queue)}
+    >
+      {!isPublicBank && (
+        <button
+          className="track-index"
+          onClick={() => play(track, queue)}
+          title="Воспроизвести"
+        >
+          <span className="glyph-num">{String(index ?? 0).padStart(2, "0")}</span>
+          <span className="glyph-play">▶</span>
+        </button>
+      )}
+
       <div className="track-main">
-        <div className="track-title">
-          {track.title}
-          {track.isPublic && track.isOwned && <span className="badge badge-public">Public</span>}
-          {!track.isOwned && <span className="badge badge-saved">Saved</span>}
+        <div className="track-title">{track.title}</div>
+        <div className="track-sub">
+          {track.artist}
+          {isPublicBank ? "" : ` · ${fmtSize(track.fileSize)}`}
         </div>
-        <div className="track-artist">{track.artist}</div>
       </div>
-      <div className="track-meta">{fmtDuration(track.duration)}</div>
-      <div className="track-meta">{fmtSize(track.fileSize)}</div>
+
+      {!isPublicBank && tags}
+
+      <span className="track-dur">{fmtDuration(track.duration)}</span>
+
       <div className="track-actions">
-        {tgLinked && (
-          <button
-            className={`btn-ghost btn-icon ${tgState === "sent" ? "is-sent" : ""}`}
-            disabled={tgState === "sending"}
-            title={tgError ?? "Отправить в Telegram"}
-            onClick={sendToTelegram}
-          >
-            {tgState === "sent" ? "✓" : <TelegramIcon />}
-          </button>
-        )}
-        {onSave && (
+        {isPublicBank ? (
           isSaved
             ? <span className="muted small">В библиотеке</span>
-            : <button className="btn-ghost" title="Сохранить в библиотеку"
-                      onClick={() => onSave(track)}>＋ Сохранить</button>
-        )}
-        {onUpdated && track.isOwned && (
+            : <button className="btn btn-secondary btn-sm" onClick={() => onSave!(track)}>
+                Сохранить
+              </button>
+        ) : (
           <>
-            <div className="menu-wrap">
-              <button className="btn-ghost" onClick={() => setMenuOpen(v => !v)} title="Добавить в коллекцию">＋</button>
-              {menuOpen && (
-                <AddToCollectionMenu
-                  trackId={track.id}
-                  onDone={() => setMenuOpen(false)}
-                />
-              )}
-            </div>
-            <button className="btn-ghost" title="Редактировать"
-                    onClick={() => setEditOpen(true)}>✎</button>
-          </>
-        )}
-        {onUpdated && !track.isOwned && (
-          <div className="menu-wrap">
-            <button className="btn-ghost" onClick={() => setMenuOpen(v => !v)} title="Добавить в коллекцию">＋</button>
-            {menuOpen && (
-              <AddToCollectionMenu
-                trackId={track.id}
-                onDone={() => setMenuOpen(false)}
-              />
+            {tgLinked && (
+              <button
+                className={`btn btn-ghost btn-icon ${tgState === "sent" ? "is-sent" : ""}`}
+                disabled={tgState === "sending"}
+                title={tgError ?? "Отправить в Telegram"}
+                onClick={sendToTelegram}
+              >
+                {tgState === "sent" ? "✓" : <TelegramIcon />}
+              </button>
             )}
-          </div>
-        )}
-        {onRemoveFromCollection && (
-          <button className="btn-ghost" title="Убрать из коллекции"
-                  onClick={() => onRemoveFromCollection(track)}>−</button>
-        )}
-        {onUnsave && !track.isOwned && (
-          <button className="btn-danger" title="Убрать из библиотеки"
-                  onClick={() => onUnsave(track)}>✕</button>
-        )}
-        {onDelete && track.isOwned && (
-          <button className="btn-danger" title="Удалить"
-                  onClick={() => onDelete(track)}>✕</button>
+            {onUpdated && (
+              <div className="menu-wrap">
+                <button
+                  className="btn btn-ghost btn-icon"
+                  onClick={() => setMenuOpen(v => !v)}
+                  title="Добавить в коллекцию"
+                >＋</button>
+                {menuOpen && (
+                  <AddToCollectionMenu trackId={track.id} onDone={() => setMenuOpen(false)} />
+                )}
+              </div>
+            )}
+            {onUpdated && track.isOwned && (
+              <button className="btn btn-ghost btn-icon" title="Редактировать"
+                      onClick={() => setEditOpen(true)}>✎</button>
+            )}
+            {onRemoveFromCollection && (
+              <button className="btn btn-ghost btn-icon" title="Убрать из коллекции"
+                      onClick={() => onRemoveFromCollection(track)}>−</button>
+            )}
+            {onUnsave && !track.isOwned && (
+              <button className="btn btn-danger btn-icon" title="Убрать из библиотеки"
+                      onClick={() => onUnsave(track)}>✕</button>
+            )}
+            {onDelete && track.isOwned && (
+              <button className="btn btn-danger btn-icon" title="Удалить"
+                      onClick={() => onDelete(track)}>✕</button>
+            )}
+          </>
         )}
       </div>
 
@@ -139,7 +147,7 @@ export function TrackRow({
         <EditTrackModal
           track={track}
           onClose={() => setEditOpen(false)}
-          onSaved={t => { onUpdated?.(t); }}
+          onSaved={t => onUpdated?.(t)}
         />
       )}
     </div>

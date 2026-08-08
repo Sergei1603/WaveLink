@@ -34,19 +34,19 @@ export function UploadModal({ onClose, onUploaded }: Props) {
   const [items, setItems] = useState<QueueItem[]>([]);
   const [isPublic, setIsPublic] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
 
-  const onFiles = (files: FileList | null) => {
+  const addFiles = (files: FileList | File[] | null) => {
     if (!files) return;
-    const arr: QueueItem[] = [];
-    for (const f of Array.from(files)) {
-      arr.push({
+    const arr: QueueItem[] = Array.from(files)
+      .filter(f => f.type.startsWith("audio/"))
+      .map(f => ({
         file: f,
         title: defaultTitle(f.name),
         artist: "Unknown",
-        status: "pending"
-      });
-    }
-    setItems(prev => [...prev, ...arr]);
+        status: "pending" as const
+      }));
+    if (arr.length) setItems(prev => [...prev, ...arr]);
   };
 
   const updateItem = (idx: number, patch: Partial<QueueItem>) =>
@@ -79,27 +79,32 @@ export function UploadModal({ onClose, onUploaded }: Props) {
   };
 
   const allDone = items.length > 0 && items.every(i => i.status === "done");
-  const hasPending = items.some(i => i.status === "pending" || i.status === "failed");
+  const pendingCount = items.filter(i => i.status === "pending" || i.status === "failed").length;
 
   return (
-    <div className="modal-backdrop" onMouseDown={onClose}>
+    <div className="dialog-backdrop" onMouseDown={onClose}>
       <form
-        className="modal modal-wide"
+        className="dialog dialog-wide"
         onMouseDown={e => e.stopPropagation()}
         onSubmit={e => { e.preventDefault(); runUpload(); }}
       >
-        <h2>Загрузить треки</h2>
+        <div className="dialog-title">Загрузить треки</div>
 
-        <label className="filepicker">
-          <input
-            type="file"
-            accept="audio/*"
-            multiple
-            onChange={e => onFiles(e.target.files)}
-          />
-          <span>{items.length === 0
-            ? "Выберите один или несколько аудиофайлов…"
-            : `Добавить ещё (выбрано ${items.length})`}</span>
+        <label
+          className="dropzone"
+          style={dragOver ? { borderColor: "var(--color-accent)" } : undefined}
+          onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={e => { e.preventDefault(); setDragOver(false); addFiles(e.dataTransfer.files); }}
+        >
+          <input type="file" accept="audio/*" multiple onChange={e => addFiles(e.target.files)} />
+          Перетащите аудиофайлы или <span className="accent">выберите на диске</span>
+          {items.length > 0 && (
+            <>
+              <br />
+              <span className="hint">выбрано {items.length} {items.length === 1 ? "файл" : "файла(ов)"}</span>
+            </>
+          )}
         </label>
 
         {items.length > 0 && (
@@ -108,12 +113,14 @@ export function UploadModal({ onClose, onUploaded }: Props) {
               <div key={idx} className={`upload-item upload-${it.status}`}>
                 <div className="upload-fields">
                   <input
+                    className="input input-sm"
                     placeholder="Название"
                     value={it.title}
                     onChange={e => updateItem(idx, { title: e.target.value })}
                     disabled={it.status === "uploading" || it.status === "done"}
                   />
                   <input
+                    className="input input-sm"
                     placeholder="Исполнитель"
                     value={it.artist}
                     onChange={e => updateItem(idx, { artist: e.target.value })}
@@ -121,41 +128,43 @@ export function UploadModal({ onClose, onUploaded }: Props) {
                   />
                 </div>
                 <div className="upload-status">
-                  {it.status === "pending" && <span className="muted small">Ожидает</span>}
-                  {it.status === "uploading" && <span className="muted small">Загрузка…</span>}
-                  {it.status === "done" && <span className="success small">✓ Готово</span>}
-                  {it.status === "duplicate" && <span className="warn small" title={it.message}>Дубликат</span>}
-                  {it.status === "failed" && <span className="error-text small" title={it.message}>Ошибка</span>}
+                  {it.status === "pending" && <span className="muted">Ожидает</span>}
+                  {it.status === "uploading" && <span className="muted">Загрузка…</span>}
+                  {it.status === "done" && <span className="success">Готово</span>}
+                  {it.status === "duplicate" && <span className="warn" title={it.message}>Дубликат</span>}
+                  {it.status === "failed" && <span className="error-text" title={it.message}>Ошибка</span>}
                 </div>
-                {it.status !== "uploading" && (
+                {it.status !== "uploading" ? (
                   <button
                     type="button"
-                    className="btn-ghost small-btn"
+                    className="btn btn-danger btn-icon"
+                    style={{ width: 28, height: 28 }}
                     onClick={() => removeItem(idx)}
                     title="Убрать из очереди"
                   >✕</button>
-                )}
+                ) : <span />}
               </div>
             ))}
           </div>
         )}
 
-        <label className="checkbox-row">
+        <label className="checkbox">
           <input
             type="checkbox"
             checked={isPublic}
             onChange={e => setIsPublic(e.target.checked)}
             disabled={busy}
           />
-          <span>Сделать публичными (доступны всем в Общем банке)</span>
+          <span className="dot" />
+          <span>Опубликовать в Общем банке</span>
         </label>
 
-        <div className="modal-actions">
-          <button type="button" className="btn-ghost" onClick={onClose} disabled={busy}>
+        <div className="dialog-actions">
+          <button type="button" className="btn btn-secondary" onClick={onClose} disabled={busy}>
             {allDone ? "Закрыть" : "Отмена"}
           </button>
-          <button type="submit" className="btn-primary" disabled={busy || !hasPending}>
-            {busy ? "Загрузка…" : allDone ? "Все загружены" : `Загрузить (${items.filter(i => i.status === "pending" || i.status === "failed").length})`}
+          <button type="submit" className="btn btn-primary" disabled={busy || pendingCount === 0}>
+            {busy ? "Загрузка…" : allDone ? "Все загружены" : `Загрузить (${pendingCount})`}
           </button>
         </div>
       </form>

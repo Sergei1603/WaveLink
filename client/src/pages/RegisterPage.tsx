@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { Backdrop } from "../components/Backdrop";
+import { Wordmark } from "../components/Wordmark";
 
 export function RegisterPage() {
   const { register } = useAuth();
@@ -23,28 +25,46 @@ export function RegisterPage() {
 
   return (
     <div className="auth-page">
-      <form className="auth-card" onSubmit={submit}>
-        <h1>Регистрация в WaveLink</h1>
-        <label>
-          Email
-          <input type="email" required value={email} onChange={e => setEmail(e.target.value)} autoFocus />
-        </label>
-        <label>
-          Пароль
-          <input type="password" required value={password} onChange={e => setPassword(e.target.value)} />
-        </label>
-        <label>
-          Подтвердите пароль
-          <input type="password" required value={confirm} onChange={e => setConfirm(e.target.value)} />
-        </label>
-        {err && <div className="error">{err}</div>}
-        <button type="submit" disabled={busy} className="btn-primary">
-          {busy ? "Создание…" : "Создать аккаунт"}
-        </button>
-        <p className="muted">
-          Уже есть аккаунт? <Link to="/login">Войти</Link>
-        </p>
-      </form>
+      <div className="auth-panel">
+        <Backdrop name="backdrop-auth" className="auth-bg" />
+
+        <Wordmark />
+
+        <div>
+          <h1>Своя фонотека</h1>
+          <div className="auth-lede">
+            Загружайте треки, собирайте коллекции, слушайте в браузере и в Telegram.
+          </div>
+        </div>
+
+        <form className="auth-form" onSubmit={submit}>
+          <div className="field">
+            <label htmlFor="reg-email">Email</label>
+            <input id="reg-email" className="input" type="email" required autoFocus
+                   value={email} onChange={e => setEmail(e.target.value)} />
+          </div>
+          <div className="field">
+            <label htmlFor="reg-password">Пароль</label>
+            <input id="reg-password" className="input" type="password" required
+                   value={password} onChange={e => setPassword(e.target.value)} />
+          </div>
+          <div className="field">
+            <label htmlFor="reg-confirm">Подтвердите пароль</label>
+            <input id="reg-confirm" className="input" type="password" required
+                   value={confirm} onChange={e => setConfirm(e.target.value)} />
+          </div>
+
+          {err && <div className="error">{err}</div>}
+
+          <button type="submit" className="btn btn-primary btn-block" disabled={busy}>
+            {busy ? "Создание…" : "Создать аккаунт"}
+          </button>
+
+          <div className="muted small">
+            Уже есть аккаунт? <Link to="/login">Войти</Link>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

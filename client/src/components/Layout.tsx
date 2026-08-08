@@ -1,12 +1,28 @@
-import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { PlayerProvider } from "../player/PlayerContext";
 import { TelegramProvider } from "../telegram/TelegramContext";
-import { PlayerBar } from "./PlayerBar";
+import { AppShellProvider, useAppShell } from "../app/AppShellContext";
+import { NowPlaying } from "./NowPlaying";
+import { UploadModal } from "./UploadModal";
+import { Backdrop } from "./Backdrop";
+import { Wordmark } from "./Wordmark";
 
-export function Layout() {
+function AccountMenu() {
   const { email, logout } = useAuth();
   const nav = useNavigate();
+  const [open, setOpen] = useState(false);
+  const wrap = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!wrap.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
 
   const handleLogout = async () => {
     await logout();
@@ -14,30 +30,87 @@ export function Layout() {
   };
 
   return (
-    <TelegramProvider>
-    <PlayerProvider>
-      <div className="app-shell">
-        <header className="topbar">
-          <Link to="/" className="brand">WaveLink</Link>
-          <nav className="nav">
-            <NavLink to="/" end>Библиотека</NavLink>
-            <NavLink to="/public">Общий банк</NavLink>
-            <NavLink to="/collections">Коллекции</NavLink>
-            <NavLink to="/telegram">Telegram</NavLink>
-          </nav>
-          <div className="topbar-right">
-            <span className="user-email">{email ?? "Аккаунт"}</span>
-            <button className="btn-ghost" onClick={handleLogout}>Выйти</button>
-          </div>
-        </header>
+    <div className="menu-wrap" ref={wrap}>
+      <button
+        className="avatar"
+        onClick={() => setOpen(v => !v)}
+        title={email ?? "Аккаунт"}
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        {(email?.[0] ?? "?").toUpperCase()}
+      </button>
+      {open && (
+        <div className="popover account-popover" role="menu">
+          <div className="account-email">{email ?? "Аккаунт"}</div>
+          <hr className="hr" style={{ margin: "4px 0" }} />
+          <button className="popover-item" onClick={handleLogout}>Выйти</button>
+        </div>
+      )}
+    </div>
+  );
+}
 
+export function Layout() {
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const openUpload = useCallback(() => setUploadOpen(true), []);
+
+  return (
+    <TelegramProvider>
+      <PlayerProvider>
+        <AppShellProvider openUpload={openUpload}>
+          <ShellBody uploadOpen={uploadOpen} onCloseUpload={() => setUploadOpen(false)} />
+        </AppShellProvider>
+      </PlayerProvider>
+    </TelegramProvider>
+  );
+}
+
+/** Inside the provider so the header and the dialog can use the shell state. */
+function ShellBody({
+  uploadOpen, onCloseUpload
+}: { uploadOpen: boolean; onCloseUpload: () => void }) {
+  return (
+    <div className="app-shell">
+      <Backdrop />
+
+      <header className="topbar">
+        <Wordmark to="/" />
+        <nav className="topnav">
+          <NavLink to="/" end>Библиотека</NavLink>
+          <NavLink to="/public">Общий банк</NavLink>
+          <NavLink to="/collections">Коллекции</NavLink>
+          <NavLink to="/telegram">Telegram</NavLink>
+        </nav>
+        <div className="topbar-right">
+          <UploadButton />
+          <AccountMenu />
+        </div>
+      </header>
+
+      <div className="shell-body">
         <main className="content">
           <Outlet />
         </main>
-
-        <PlayerBar />
+        <NowPlaying />
       </div>
-    </PlayerProvider>
-    </TelegramProvider>
+
+      {uploadOpen && <UploadDialog onClose={onCloseUpload} />}
+    </div>
+  );
+}
+
+function UploadButton() {
+  const { openUpload } = useAppShell();
+  return <button className="btn btn-primary" onClick={openUpload}>Загрузить</button>;
+}
+
+function UploadDialog({ onClose }: { onClose: () => void }) {
+  const { bumpTracks, refreshCollections } = useAppShell();
+  return (
+    <UploadModal
+      onClose={onClose}
+      onUploaded={() => { bumpTracks(); void refreshCollections(); }}
+    />
   );
 }
