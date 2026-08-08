@@ -24,6 +24,8 @@ services:
       timeout: 5s
       retries: 10
     networks: [wavelink]
+    ports:
+      - "127.0.0.1:5432:5432"
 
   minio:
     image: minio/minio:latest
