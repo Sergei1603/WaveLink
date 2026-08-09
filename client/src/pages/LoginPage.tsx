@@ -7,7 +7,7 @@ import { Wordmark } from "../components/Wordmark";
 export function LoginPage() {
   const { login } = useAuth();
   const nav = useNavigate();
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -15,7 +15,7 @@ export function LoginPage() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErr(null); setBusy(true);
-    try { await login(email, password); nav("/"); }
+    try { await login(username, password); nav("/"); }
     catch (e: any) { setErr(e?.message ?? "Ошибка входа"); }
     finally { setBusy(false); }
   };
@@ -34,13 +34,15 @@ export function LoginPage() {
 
         <form className="auth-form" onSubmit={submit}>
           <div className="field">
-            <label htmlFor="login-email">Email</label>
-            <input id="login-email" className="input" type="email" required autoFocus
-                   value={email} onChange={e => setEmail(e.target.value)} />
+            <label htmlFor="login-username">Никнейм</label>
+            <input id="login-username" className="input" type="text" required autoFocus
+                   autoComplete="username" autoCapitalize="off" spellCheck={false}
+                   value={username} onChange={e => setUsername(e.target.value)} />
           </div>
           <div className="field">
             <label htmlFor="login-password">Пароль</label>
             <input id="login-password" className="input" type="password" required
+                   autoComplete="current-password"
                    value={password} onChange={e => setPassword(e.target.value)} />
           </div>
 

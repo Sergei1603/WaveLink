@@ -6,19 +6,19 @@ import type { AuthTokens } from "../types";
 
 interface AuthState {
   tokens: AuthTokens | null;
-  email: string | null;
+  username: string | null;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<void>;
+  register: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
 const Ctx = createContext<AuthState | null>(null);
 
-function decodeEmail(accessToken: string): string | null {
+function decodeUsername(accessToken: string): string | null {
   try {
     const payload = JSON.parse(atob(accessToken.split(".")[1]));
-    return payload.email ?? payload.unique_name ?? null;
+    return payload.username ?? payload.unique_name ?? null;
   } catch { return null; }
 }
 
@@ -31,10 +31,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AuthState>(() => ({
     tokens,
-    email: tokens ? decodeEmail(tokens.accessToken) : null,
+    username: tokens ? decodeUsername(tokens.accessToken) : null,
     isAuthenticated: !!tokens,
-    login: async (e, p) => { setTokens(await authApi.login(e, p)); },
-    register: async (e, p) => { setTokens(await authApi.register(e, p)); },
+    login: async (u, p) => { setTokens(await authApi.login(u, p)); },
+    register: async (u, p) => { setTokens(await authApi.register(u, p)); },
     logout: async () => {
       const rt = tokens?.refreshToken;
       if (rt) await authApi.logout(rt);

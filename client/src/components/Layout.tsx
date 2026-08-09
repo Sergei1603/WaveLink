@@ -10,7 +10,7 @@ import { Backdrop } from "./Backdrop";
 import { Wordmark } from "./Wordmark";
 
 function AccountMenu() {
-  const { email, logout } = useAuth();
+  const { username, logout } = useAuth();
   const nav = useNavigate();
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLDivElement | null>(null);
@@ -34,15 +34,15 @@ function AccountMenu() {
       <button
         className="avatar"
         onClick={() => setOpen(v => !v)}
-        title={email ?? "Аккаунт"}
+        title={username ?? "Аккаунт"}
         aria-haspopup="menu"
         aria-expanded={open}
       >
-        {(email?.[0] ?? "?").toUpperCase()}
+        {(username?.[0] ?? "?").toUpperCase()}
       </button>
       {open && (
         <div className="popover account-popover" role="menu">
-          <div className="account-email">{email ?? "Аккаунт"}</div>
+          <div className="account-name">{username ?? "Аккаунт"}</div>
           <hr className="hr" style={{ margin: "4px 0" }} />
           <button className="popover-item" onClick={handleLogout}>Выйти</button>
         </div>

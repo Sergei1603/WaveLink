@@ -5,6 +5,7 @@ namespace WaveLink.API.Common;
 public static class CurrentUser
 {
     public const string UserIdClaim = "sub";
+    public const string UsernameClaim = "username";
 
     public static Guid GetId(ClaimsPrincipal principal)
     {

@@ -142,7 +142,7 @@ public class TelegramBotService : BackgroundService
         using var scope = _services.CreateScope();
         var linker = scope.ServiceProvider.GetRequiredService<ITelegramLinkTokenService>();
         var user = await linker.ConsumeAsync(token, m.Chat.Id, ct);
-        await bot.SendMessage(m.Chat.Id, $"Привязан к {user.Email}",
+        await bot.SendMessage(m.Chat.Id, $"Привязан к {user.Username}",
             replyMarkup: MainKeyboard, cancellationToken: ct);
     }
 

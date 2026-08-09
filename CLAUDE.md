@@ -74,12 +74,18 @@ Telegram bot inside the same process.
 
 ## Database schema (EF Core)
 
-- **users** — id (uuid PK), email (unique), password_hash, telegram_chat_id (unique, nullable), created_at
+- **users** — id (uuid PK), username (unique, ≤32 chars), password_hash, telegram_chat_id (unique, nullable), created_at
 - **tracks** — id, user_id (FK cascade), title, artist, duration (sec), file_key, file_size, mime_type, uploaded_at
 - **collections** — id, user_id (FK cascade), name, created_at
 - **collection_tracks** — composite (collection_id, track_id) PK, added_at, both FKs cascade
 - **refresh_tokens** — id, user_id (FK cascade), token_hash (unique, SHA-256), expires_at, created_at, revoked_at
 - **telegram_link_tokens** — id, user_id (FK cascade), token (unique), expires_at, used_at (single-use, 10-min TTL)
+
+Usernames are the login identity (there is no e-mail on the account). They are stored with
+the case the user typed, but uniqueness and login lookups are case-insensitive
+(`u.Username.ToLower() == normalized`); the allowed charset lives in
+`DTOs/UsernameRules` (`^[A-Za-z0-9._-]{3,32}$`) and is mirrored by the register form.
+The access token carries the nickname in a `username` claim.
 
 Migrations live under `WaveLink.API/Migrations/` once generated (`dotnet ef migrations add Init`).
 `Program.cs` runs `Database.MigrateAsync()` at startup.
@@ -90,8 +96,8 @@ All routes require JWT bearer auth except those under `/api/auth/*`.
 
 | Method | Route | Notes |
 | --- | --- | --- |
-| POST | `/api/auth/register` | `{ email, password }` → token pair |
-| POST | `/api/auth/login` | `{ email, password }` → token pair |
+| POST | `/api/auth/register` | `{ username, password }` → token pair |
+| POST | `/api/auth/login` | `{ username, password }` → token pair |
 | POST | `/api/auth/refresh` | `{ refreshToken }` → new pair (rotates) |
 | POST | `/api/auth/logout` | revokes refresh token |
 | GET  | `/api/tracks?page=&limit=` | paginated, newest first |

@@ -4,10 +4,12 @@ import { useAuth } from "../auth/AuthContext";
 import { Backdrop } from "../components/Backdrop";
 import { Wordmark } from "../components/Wordmark";
 
+const USERNAME_RE = /^[A-Za-z0-9._-]{3,32}$/;
+
 export function RegisterPage() {
   const { register } = useAuth();
   const nav = useNavigate();
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [err, setErr] = useState<string | null>(null);
@@ -15,10 +17,14 @@ export function RegisterPage() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!USERNAME_RE.test(username)) {
+      setErr("Никнейм: 3–32 символа, латиница, цифры, точка, дефис или подчёркивание");
+      return;
+    }
     if (password !== confirm) { setErr("Пароли не совпадают"); return; }
     if (password.length < 8) { setErr("Пароль должен содержать не менее 8 символов"); return; }
     setErr(null); setBusy(true);
-    try { await register(email, password); nav("/"); }
+    try { await register(username, password); nav("/"); }
     catch (e: any) { setErr(e?.message ?? "Ошибка регистрации"); }
     finally { setBusy(false); }
   };
@@ -39,18 +45,22 @@ export function RegisterPage() {
 
         <form className="auth-form" onSubmit={submit}>
           <div className="field">
-            <label htmlFor="reg-email">Email</label>
-            <input id="reg-email" className="input" type="email" required autoFocus
-                   value={email} onChange={e => setEmail(e.target.value)} />
+            <label htmlFor="reg-username">Никнейм</label>
+            <input id="reg-username" className="input" type="text" required autoFocus
+                   autoComplete="username" autoCapitalize="off" spellCheck={false}
+                   minLength={3} maxLength={32}
+                   value={username} onChange={e => setUsername(e.target.value)} />
           </div>
           <div className="field">
             <label htmlFor="reg-password">Пароль</label>
             <input id="reg-password" className="input" type="password" required
+                   autoComplete="new-password"
                    value={password} onChange={e => setPassword(e.target.value)} />
           </div>
           <div className="field">
             <label htmlFor="reg-confirm">Подтвердите пароль</label>
             <input id="reg-confirm" className="input" type="password" required
+                   autoComplete="new-password"
                    value={confirm} onChange={e => setConfirm(e.target.value)} />
           </div>
 

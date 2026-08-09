@@ -354,7 +354,7 @@ textarea.input { min-height: 90px; resize: vertical; }
 }
 .avatar:hover { background: var(--color-accent-700); }
 .account-popover { min-width: 200px; }
-.account-email {
+.account-name {
   padding: 6px 8px; font-size: 13px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }

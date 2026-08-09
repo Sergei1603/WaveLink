@@ -36,29 +36,30 @@ public class AuthService : IAuthService
 
     public async Task<TokenPairResponse> RegisterAsync(RegisterRequest request, CancellationToken ct)
     {
-        var email = request.Email.Trim().ToLowerInvariant();
+        var username = request.Username.Trim();
+        var normalized = username.ToLowerInvariant();
 
-        if (await _db.Users.AnyAsync(u => u.Email == email, ct))
-            throw AppException.Conflict("Email already registered");
+        if (await _db.Users.AnyAsync(u => u.Username.ToLower() == normalized, ct))
+            throw AppException.Conflict("Никнейм уже занят");
 
         var user = new User
         {
             Id = Guid.NewGuid(),
-            Email = email,
+            Username = username,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
             CreatedAt = DateTime.UtcNow
         };
         _db.Users.Add(user);
         await _db.SaveChangesAsync(ct);
 
-        _logger.LogInformation("Registered user {UserId} ({Email})", user.Id, user.Email);
+        _logger.LogInformation("Registered user {UserId} ({Username})", user.Id, user.Username);
         return await IssueTokensAsync(user, ct);
     }
 
     public async Task<TokenPairResponse> LoginAsync(LoginRequest request, CancellationToken ct)
     {
-        var email = request.Email.Trim().ToLowerInvariant();
-        var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == email, ct)
+        var normalized = request.Username.Trim().ToLowerInvariant();
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.Username.ToLower() == normalized, ct)
                    ?? throw AppException.Unauthorized("Invalid credentials");
 
         if (!BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
@@ -121,7 +122,7 @@ public class AuthService : IAuthService
         var claims = new[]
         {
             new Claim(CurrentUser.UserIdClaim, user.Id.ToString()),
-            new Claim(JwtRegisteredClaimNames.Email, user.Email),
+            new Claim(CurrentUser.UsernameClaim, user.Username),
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         };
         var token = new JwtSecurityToken(

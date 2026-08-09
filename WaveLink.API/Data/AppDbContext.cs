@@ -20,8 +20,8 @@ public class AppDbContext : DbContext
         b.Entity<User>(e =>
         {
             e.HasKey(x => x.Id);
-            e.Property(x => x.Email).IsRequired().HasMaxLength(256);
-            e.HasIndex(x => x.Email).IsUnique();
+            e.Property(x => x.Username).IsRequired().HasMaxLength(32);
+            e.HasIndex(x => x.Username).IsUnique();
             e.Property(x => x.PasswordHash).IsRequired();
             e.HasIndex(x => x.TelegramChatId).IsUnique().HasFilter("\"TelegramChatId\" IS NOT NULL");
         });
