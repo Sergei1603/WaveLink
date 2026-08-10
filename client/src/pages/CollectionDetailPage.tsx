@@ -4,6 +4,7 @@ import { getCollection, removeTrackFromCollection } from "../api/collections";
 import { useAppShell } from "../app/AppShellContext";
 import type { CollectionDetail, Track } from "../types";
 import { TrackRow } from "../components/TrackRow";
+import { ShuffleButtons } from "../components/ShuffleButtons";
 
 export function CollectionDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -46,6 +47,11 @@ export function CollectionDetailPage() {
           <h1>{data?.name ?? "…"}</h1>
           {data && <div className="page-sub">{data.tracks.length} треков</div>}
         </div>
+        {data && data.tracks.length > 0 && (
+          <div className="page-actions">
+            <ShuffleButtons collectionId={id} />
+          </div>
+        )}
       </div>
 
       {err && <div className="error">{err}</div>}

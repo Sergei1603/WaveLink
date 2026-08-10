@@ -8,6 +8,7 @@ import { LibraryPage } from "./pages/LibraryPage";
 import { PublicBankPage } from "./pages/PublicBankPage";
 import { CollectionsPage } from "./pages/CollectionsPage";
 import { CollectionDetailPage } from "./pages/CollectionDetailPage";
+import { StatsPage } from "./pages/StatsPage";
 import { TelegramPage } from "./pages/TelegramPage";
 
 export default function App() {
@@ -28,6 +29,7 @@ export default function App() {
             <Route path="/public" element={<PublicBankPage />} />
             <Route path="/collections" element={<CollectionsPage />} />
             <Route path="/collections/:id" element={<CollectionDetailPage />} />
+            <Route path="/stats" element={<StatsPage />} />
             <Route path="/telegram" element={<TelegramPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

@@ -377,13 +377,14 @@ textarea.input { min-height: 90px; resize: vertical; }
 }
 .page-header h1 { margin: 0 0 4px; }
 .page-sub { font-size: 13px; color: color-mix(in srgb, var(--color-text) 50%, transparent); max-width: 420px; }
-.page-actions { display: flex; align-items: center; gap: 10px; }
+.page-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
 .search { width: 220px; }
 
 /* — track list — */
 .track-list { display: flex; flex-direction: column; min-width: 0; }
 .track-row {
-  display: grid; grid-template-columns: 30px minmax(0, 1fr) auto 62px 116px;
+  /* actions column fits five icon buttons: ⓘ, Telegram, ＋, ✎, ✕ */
+  display: grid; grid-template-columns: 30px minmax(0, 1fr) auto 62px 192px;
   align-items: center; gap: 16px;
   padding: 12px 10px; font-size: 14px;
   border-radius: var(--radius-md);
@@ -407,7 +408,10 @@ textarea.input { min-height: 90px; resize: vertical; }
   font-family: var(--font-heading); font-weight: 500;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.track-sub { font-size: 12px; color: color-mix(in srgb, var(--color-text) 52%, transparent); }
+.track-sub {
+  font-size: 12px; color: color-mix(in srgb, var(--color-text) 52%, transparent);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .track-tags { display: flex; gap: 6px; }
 .track-dur {
   font-variant-numeric: tabular-nums; font-size: 13px; text-align: right;
@@ -415,7 +419,7 @@ textarea.input { min-height: 90px; resize: vertical; }
 }
 .track-actions { display: flex; gap: 2px; justify-content: flex-end; align-items: center; }
 /* Public bank rows carry a Save action instead of the owner tool-set. */
-.track-row.track-row-public { grid-template-columns: minmax(0, 1fr) 62px 150px; }
+.track-row.track-row-public { grid-template-columns: minmax(0, 1fr) 62px 186px; }
 
 /* — now playing column — */
 .now-panel {
@@ -524,6 +528,56 @@ textarea.input { min-height: 90px; resize: vertical; }
 .upload-item.upload-duplicate { box-shadow: inset 2px 0 0 var(--color-warn); }
 .upload-item.upload-failed { box-shadow: inset 2px 0 0 var(--color-danger); }
 .upload-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; min-width: 0; }
+
+/* — track card — */
+.detail-list { display: flex; flex-direction: column; gap: 2px; }
+.detail-row {
+  display: grid; grid-template-columns: 160px minmax(0, 1fr);
+  gap: 12px; align-items: baseline; padding: 5px 0; font-size: 14px;
+}
+.detail-label { font-size: 12px; color: color-mix(in srgb, var(--color-text) 50%, transparent); }
+.detail-value { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+
+/* — statistics — */
+.stat-row {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--space-3); margin-bottom: var(--space-6);
+}
+.stat-tile {
+  padding: 18px 20px; border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-text) 4%, transparent);
+}
+.stat-value {
+  font-family: var(--font-heading); font-weight: var(--font-heading-weight);
+  font-size: 26px; font-variant-numeric: tabular-nums; line-height: 1.15;
+}
+.stat-label { font-size: 12px; color: color-mix(in srgb, var(--color-text) 50%, transparent); }
+
+.stat-columns { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-8); }
+.stat-columns section { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+.chart-list { display: flex; flex-direction: column; }
+.chart-item {
+  display: grid; grid-template-columns: 26px minmax(0, 1fr) auto;
+  gap: 12px; align-items: center;
+  padding: 10px; border-radius: var(--radius-md);
+}
+.chart-item:hover { background: color-mix(in srgb, var(--color-text) 5%, transparent); }
+.chart-rank {
+  font-size: 12px; font-variant-numeric: tabular-nums;
+  color: color-mix(in srgb, var(--color-text) 38%, transparent);
+}
+.chart-main { min-width: 0; }
+.chart-title {
+  font-family: var(--font-heading); font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.chart-sub {
+  font-size: 12px; color: color-mix(in srgb, var(--color-text) 52%, transparent);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.chart-count {
+  font-variant-numeric: tabular-nums; font-size: 14px; color: var(--color-accent);
+}
 .upload-status { font-size: 12px; text-align: right; }
 
 /* ── auth pages ──────────────────────────────────────────────────────── */
@@ -575,8 +629,12 @@ textarea.input { min-height: 90px; resize: vertical; }
 }
 
 @media (max-width: 820px) {
-  .topbar { flex-wrap: wrap; gap: 16px; padding: 14px 20px; }
-  .topnav { order: 3; width: 100%; flex: 1 0 100%; gap: 18px; overflow-x: auto; }
+  /* min-width:0 — as a grid item it otherwise refuses to shrink below its content,
+     and the wide nav row would drag the whole page past the viewport. */
+  .topbar { flex-wrap: wrap; gap: 16px; padding: 14px 20px; min-width: 0; }
+  /* flex-basis 100% keeps the nav on its own row; shrink 1 + min-width 0 are what let
+     overflow-x actually engage once the links no longer fit (they used to widen the page). */
+  .topnav { order: 3; width: 100%; flex: 1 1 100%; min-width: 0; gap: 18px; overflow-x: auto; }
   .content { padding: 22px 20px; }
   .now-panel { padding: 20px; }
   h1 { font-size: 32px; }
@@ -586,4 +644,6 @@ textarea.input { min-height: 90px; resize: vertical; }
   .track-actions { grid-column: 1 / -1; justify-content: flex-start; }
   .auth-panel { padding: 32px 24px; }
   .upload-fields { grid-template-columns: 1fr; }
+  .stat-columns { grid-template-columns: 1fr; gap: var(--space-6); }
+  .detail-row { grid-template-columns: 1fr; gap: 0; }
 }

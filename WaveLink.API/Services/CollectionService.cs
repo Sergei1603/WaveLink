@@ -35,14 +35,12 @@ public class CollectionService : ICollectionService
     public async Task<CollectionDetailResponse> GetAsync(Guid userId, Guid collectionId, CancellationToken ct)
     {
         var collection = await GetOwnedAsync(userId, collectionId, ct);
-        var raw = await _db.CollectionTracks
+        var tracks = await _db.CollectionTracks
             .Where(ct2 => ct2.CollectionId == collectionId)
             .OrderByDescending(ct2 => ct2.AddedAt)
             .Select(ct2 => ct2.Track)
+            .Select(TrackProjections.ToDto(userId))
             .ToListAsync(ct);
-        var tracks = raw
-            .Select(t => new TrackResponse(t.Id, t.Title, t.Artist, t.Duration, t.FileSize, t.MimeType, t.UploadedAt, t.IsPublic, t.UserId == userId))
-            .ToList();
         return new CollectionDetailResponse(collection.Id, collection.Name, collection.CreatedAt, tracks);
     }
 

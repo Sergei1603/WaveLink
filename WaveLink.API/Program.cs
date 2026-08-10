@@ -23,6 +23,7 @@ if (!string.IsNullOrEmpty(port1))
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 builder.Services.Configure<MinioOptions>(builder.Configuration.GetSection(MinioOptions.SectionName));
 builder.Services.Configure<TelegramOptions>(builder.Configuration.GetSection(TelegramOptions.SectionName));
+builder.Services.Configure<PlayStatsOptions>(builder.Configuration.GetSection(PlayStatsOptions.SectionName));
 
 var jwt = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
           ?? throw new InvalidOperationException("Jwt configuration missing");
@@ -67,6 +68,7 @@ builder.Services.AddSingleton<IMinioClient>(_ =>
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ITrackService, TrackService>();
 builder.Services.AddScoped<ICollectionService, CollectionService>();
+builder.Services.AddScoped<IPlayStatsService, PlayStatsService>();
 builder.Services.AddScoped<IMinioStorageService, MinioStorageService>();
 builder.Services.AddScoped<ITelegramLinkTokenService, TelegramLinkTokenService>();
 builder.Services.AddSingleton<ITelegramClientProvider, TelegramClientProvider>();

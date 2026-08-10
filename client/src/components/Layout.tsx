@@ -80,6 +80,7 @@ function ShellBody({
           <NavLink to="/" end>Библиотека</NavLink>
           <NavLink to="/public">Общий банк</NavLink>
           <NavLink to="/collections">Коллекции</NavLink>
+          <NavLink to="/stats">Статистика</NavLink>
           <NavLink to="/telegram">Telegram</NavLink>
         </nav>
         <div className="topbar-right">

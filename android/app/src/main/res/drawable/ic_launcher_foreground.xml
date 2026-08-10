@@ -1,0 +1,22 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- A stylised waveform: three bars rising and falling. -->
+    <path
+        android:fillColor="#E7E5FE"
+        android:pathData="M34,44h5v20h-5z" />
+    <path
+        android:fillColor="#E7E5FE"
+        android:pathData="M45,34h5v40h-5z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M56,28h5v52h-5z" />
+    <path
+        android:fillColor="#E7E5FE"
+        android:pathData="M67,38h5v32h-5z" />
+    <path
+        android:fillColor="#E7E5FE"
+        android:pathData="M78,47h5v14h-5z" />
+</vector>

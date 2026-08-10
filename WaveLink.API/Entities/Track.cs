@@ -17,4 +17,5 @@ public class Track
     public User User { get; set; } = null!;
     public ICollection<CollectionTrack> CollectionTracks { get; set; } = new List<CollectionTrack>();
     public ICollection<SavedTrack> SavedBy { get; set; } = new List<SavedTrack>();
+    public ICollection<UserTrackStat> PlayStats { get; set; } = new List<UserTrackStat>();
 }

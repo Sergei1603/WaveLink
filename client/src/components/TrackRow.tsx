@@ -5,6 +5,7 @@ import { useTelegram } from "../telegram/TelegramContext";
 import { sendTrackToTelegram } from "../api/telegram";
 import { AddToCollectionMenu } from "./AddToCollectionMenu";
 import { EditTrackModal } from "./EditTrackModal";
+import { TrackDetailModal } from "./TrackDetailModal";
 import { TelegramIcon } from "./Icons";
 
 function fmtDuration(s: number) {
@@ -39,6 +40,7 @@ export function TrackRow({
   const { linked: tgLinked } = useTelegram();
   const [menuOpen, setMenuOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(false);
   const [tgState, setTgState] = useState<"idle" | "sending" | "sent">("idle");
   const [tgError, setTgError] = useState<string | null>(null);
   const isCurrent = current?.id === track.id;
@@ -59,6 +61,11 @@ export function TrackRow({
 
   const tags = (
     <div className="track-tags">
+      {track.myPlays > 0 && (
+        <span className="tag tag-neutral" title={`Ты слушал этот трек ${track.myPlays} раз(а)`}>
+          ▶ {track.myPlays}
+        </span>
+      )}
       {track.isPublic && track.isOwned && <span className="tag tag-accent">Public</span>}
       {!track.isOwned && <span className="tag tag-neutral">Saved</span>}
     </div>
@@ -84,6 +91,7 @@ export function TrackRow({
         <div className="track-title">{track.title}</div>
         <div className="track-sub">
           {track.artist}
+          {` · @${track.uploaderUsername}`}
           {isPublicBank ? "" : ` · ${fmtSize(track.fileSize)}`}
         </div>
       </div>
@@ -93,6 +101,12 @@ export function TrackRow({
       <span className="track-dur">{fmtDuration(track.duration)}</span>
 
       <div className="track-actions">
+        <button
+          className="btn btn-ghost btn-icon"
+          title="Подробнее о треке"
+          onClick={() => setDetailOpen(true)}
+        >ⓘ</button>
+
         {isPublicBank ? (
           isSaved
             ? <span className="muted small">В библиотеке</span>
@@ -149,6 +163,10 @@ export function TrackRow({
           onClose={() => setEditOpen(false)}
           onSaved={t => onUpdated?.(t)}
         />
+      )}
+
+      {detailOpen && (
+        <TrackDetailModal trackId={track.id} onClose={() => setDetailOpen(false)} />
       )}
     </div>
   );

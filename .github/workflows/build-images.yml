@@ -4,6 +4,12 @@ on:
   push:
     branches: [main, master]
     tags: ["v*"]
+    # An Android-only commit must not rebuild and redeploy the whole server stack.
+    paths:
+      - "WaveLink.API/**"
+      - "client/**"
+      - "docker-compose.deploy.yml"
+      - ".github/workflows/build-images.yml"
   workflow_dispatch:
 
 env:

@@ -5,6 +5,8 @@ import { usePlayer } from "../player/PlayerContext";
 import { useAppShell } from "../app/AppShellContext";
 import { authHeader } from "../api/client";
 import { streamUrl } from "../api/tracks";
+import { CoverageSet } from "../player/listeningTracker";
+import { flushPlays, reportPlayNow } from "../player/playReporter";
 import { VolumeIcon } from "./Icons";
 
 function fmt(s: number) {
@@ -15,12 +17,24 @@ function fmt(s: number) {
 }
 
 /** Right-hand column: the player plus the collections shortcut list. */
+/** Below this the server rejects the report anyway (PlayStats:MinReportedSeconds). */
+const MIN_REPORTABLE_SECONDS = 5;
+
 export function NowPlaying() {
   const { current, next, prev, stop } = usePlayer();
-  const { collections, refreshCollections } = useAppShell();
+  const { collections, refreshCollections, bumpTracks } = useAppShell();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const wsRef = useRef<WaveSurfer | null>(null);
   const blobRef = useRef<string | null>(null);
+
+  // Listening measurement for the current track.
+  const coverageRef = useRef(new CoverageSet());
+  const lastTimeRef = useRef(0);
+  const startedAtRef = useRef("");
+  const durationRef = useRef(0);
+  const reportedRef = useRef(false);
+  /** Lets the page-close listener reach the current track's emit without re-subscribing. */
+  const emitRef = useRef<() => void>(() => {});
 
   const [playing, setPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
@@ -31,6 +45,21 @@ export function NowPlaying() {
 
   useEffect(() => { void refreshCollections(); }, [refreshCollections]);
 
+  // Anything stranded by an earlier failure or an offline session goes out on load.
+  useEffect(() => { void flushPlays(); }, []);
+
+  // Closing or backgrounding the tab is the one path the effect cleanup below does not cover.
+  useEffect(() => {
+    const onLeave = () => emitRef.current();
+    const onVisibility = () => { if (document.visibilityState === "hidden") onLeave(); };
+    window.addEventListener("pagehide", onLeave);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("pagehide", onLeave);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, []);
+
   useEffect(() => {
     if (!current || !containerRef.current) return;
 
@@ -38,6 +67,30 @@ export function NowPlaying() {
     setError(null); setLoading(true); setPlaying(false); setTime(0); setDuration(0);
 
     if (blobRef.current) { URL.revokeObjectURL(blobRef.current); blobRef.current = null; }
+
+    const trackId = current.id;
+    coverageRef.current.reset();
+    lastTimeRef.current = 0;
+    durationRef.current = current.duration;
+    startedAtRef.current = new Date().toISOString();
+    reportedRef.current = false;
+
+    /** Reports the finished session exactly once per loaded track. */
+    const emit = () => {
+      if (reportedRef.current) return;
+      const listened = coverageRef.current.seconds;
+      if (listened < MIN_REPORTABLE_SECONDS) return;
+      reportedRef.current = true;
+      void reportPlayNow({
+        clientEventId: crypto.randomUUID(),
+        trackId,
+        startedAt: startedAtRef.current,
+        listenedSeconds: listened,
+        trackDuration: durationRef.current > 0 ? Math.round(durationRef.current) : undefined,
+        source: "web"
+      }).then(ok => { if (ok) bumpTracks(); });
+    };
+    emitRef.current = emit;
 
     const styles = getComputedStyle(document.documentElement);
     const token = (name: string, fallback: string) =>
@@ -59,15 +112,25 @@ export function NowPlaying() {
 
     ws.on("ready", () => {
       if (cancelled) return;
-      setDuration(ws.getDuration());
+      const d = ws.getDuration();
+      setDuration(d);
+      if (d > 0) durationRef.current = d;   // more trustworthy than the stored metadata
       setLoading(false);
       ws.setVolume(volume);
       ws.play().catch(() => { /* autoplay may block */ });
     });
     ws.on("play", () => setPlaying(true));
     ws.on("pause", () => setPlaying(false));
-    ws.on("timeupdate", t => setTime(t));
-    ws.on("finish", () => next());
+    ws.on("timeupdate", t => {
+      setTime(t);
+      // Only credit normal forward progress. A jump (seek, or the gap after a stall) resyncs
+      // the cursor without adding an interval, so skipped audio is never counted as heard.
+      const delta = t - lastTimeRef.current;
+      if (delta > 0 && delta < 1.5) coverageRef.current.add(lastTimeRef.current, t);
+      lastTimeRef.current = t;
+    });
+    ws.on("seeking", (t: number) => { lastTimeRef.current = t; });
+    ws.on("finish", () => { emit(); next(); });
     ws.on("error", e => { setError(String(e)); setLoading(false); });
 
     (async () => {
@@ -86,6 +149,8 @@ export function NowPlaying() {
 
     return () => {
       cancelled = true;
+      emit();                 // covers both switching tracks and unmounting the player
+      emitRef.current = () => {};
       ws.destroy();
       wsRef.current = null;
       if (blobRef.current) { URL.revokeObjectURL(blobRef.current); blobRef.current = null; }

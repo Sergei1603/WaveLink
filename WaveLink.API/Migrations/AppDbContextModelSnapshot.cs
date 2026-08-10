@@ -64,6 +64,69 @@ namespace WaveLink.API.Migrations
                     b.ToTable("CollectionTracks");
                 });
 
+            modelBuilder.Entity("WaveLink.API.Entities.PlayEvent", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("ArtistSnapshot")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<Guid>("ClientEventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<double>("CompletionPercent")
+                        .HasColumnType("double precision");
+
+                    b.Property<bool>("IsCompleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsSignificant")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("ListenedSeconds")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("ReportedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Source")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("StartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("TitleSnapshot")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<int>("TrackDuration")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("TrackId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TrackId", "StartedAt");
+
+                    b.HasIndex("UserId", "ClientEventId")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "StartedAt");
+
+                    b.ToTable("PlayEvents");
+                });
+
             modelBuilder.Entity("WaveLink.API.Entities.RefreshToken", b =>
                 {
                     b.Property<Guid>("Id")
@@ -236,6 +299,41 @@ namespace WaveLink.API.Migrations
                     b.ToTable("Users");
                 });
 
+            modelBuilder.Entity("WaveLink.API.Entities.UserTrackStat", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TrackId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("CompletedCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("FirstPlayedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("LastPlayedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("PlayCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("StartCount")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("TotalListenedSeconds")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("UserId", "TrackId");
+
+                    b.HasIndex("TrackId");
+
+                    b.HasIndex("UserId", "PlayCount");
+
+                    b.ToTable("UserTrackStats");
+                });
+
             modelBuilder.Entity("WaveLink.API.Entities.Collection", b =>
                 {
                     b.HasOne("WaveLink.API.Entities.User", "User")
@@ -264,6 +362,25 @@ namespace WaveLink.API.Migrations
                     b.Navigation("Collection");
 
                     b.Navigation("Track");
+                });
+
+            modelBuilder.Entity("WaveLink.API.Entities.PlayEvent", b =>
+                {
+                    b.HasOne("WaveLink.API.Entities.Track", "Track")
+                        .WithMany()
+                        .HasForeignKey("TrackId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("WaveLink.API.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Track");
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("WaveLink.API.Entities.RefreshToken", b =>
@@ -318,6 +435,25 @@ namespace WaveLink.API.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("WaveLink.API.Entities.UserTrackStat", b =>
+                {
+                    b.HasOne("WaveLink.API.Entities.Track", "Track")
+                        .WithMany("PlayStats")
+                        .HasForeignKey("TrackId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("WaveLink.API.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Track");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("WaveLink.API.Entities.Collection", b =>
                 {
                     b.Navigation("CollectionTracks");
@@ -326,6 +462,8 @@ namespace WaveLink.API.Migrations
             modelBuilder.Entity("WaveLink.API.Entities.Track", b =>
                 {
                     b.Navigation("CollectionTracks");
+
+                    b.Navigation("PlayStats");
 
                     b.Navigation("SavedBy");
                 });

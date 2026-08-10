@@ -1,12 +1,20 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using WaveLink.API.Common;
 using WaveLink.API.Data;
 using WaveLink.API.DTOs;
 using WaveLink.API.Entities;
+using WaveLink.API.Options;
 
 namespace WaveLink.API.Services;
 
 public enum TrackSort { Recent, Artist, Title }
+
+/// <summary>
+/// <see cref="Random"/> plays every accessible track with equal probability;
+/// <see cref="Discover"/> biases towards what the caller has played least.
+/// </summary>
+public enum ShuffleMode { Random, Discover }
 
 public interface ITrackService
 {
@@ -20,6 +28,8 @@ public interface ITrackService
     Task<Track> GetOwnedAsync(Guid userId, Guid trackId, CancellationToken ct);
     Task<Track> GetAccessibleAsync(Guid userId, Guid trackId, CancellationToken ct);
     Task<TrackResponse?> FindByTitleAsync(Guid userId, string title, CancellationToken ct);
+    Task<TrackDetailResponse> GetDetailAsync(Guid userId, Guid trackId, CancellationToken ct);
+    Task<IReadOnlyList<TrackResponse>> ShuffleAsync(Guid userId, ShuffleMode mode, int limit, Guid? collectionId, CancellationToken ct);
 }
 
 public class TrackService : ITrackService
@@ -32,46 +42,52 @@ public class TrackService : ITrackService
 
     private readonly AppDbContext _db;
     private readonly IMinioStorageService _storage;
+    private readonly IPlayStatsService _stats;
+    private readonly PlayStatsOptions _statsOptions;
     private readonly ILogger<TrackService> _logger;
 
-    public TrackService(AppDbContext db, IMinioStorageService storage, ILogger<TrackService> logger)
+    public TrackService(
+        AppDbContext db,
+        IMinioStorageService storage,
+        IPlayStatsService stats,
+        IOptions<PlayStatsOptions> statsOptions,
+        ILogger<TrackService> logger)
     {
         _db = db;
         _storage = storage;
+        _stats = stats;
+        _statsOptions = statsOptions.Value;
         _logger = logger;
     }
 
+    // Id is a stable tiebreaker: without it Recent/Artist paging can drop or repeat rows.
     private static IQueryable<Track> ApplySort(IQueryable<Track> q, TrackSort sort) => sort switch
     {
-        TrackSort.Artist => q.OrderBy(t => t.Artist).ThenBy(t => t.Title),
-        TrackSort.Title  => q.OrderBy(t => t.Title),
-        _                => q.OrderByDescending(t => t.UploadedAt)
+        TrackSort.Artist => q.OrderBy(t => t.Artist).ThenBy(t => t.Title).ThenBy(t => t.Id),
+        TrackSort.Title  => q.OrderBy(t => t.Title).ThenBy(t => t.Id),
+        _                => q.OrderByDescending(t => t.UploadedAt).ThenBy(t => t.Id)
     };
 
-    private static TrackResponse ToDto(Track t, Guid currentUserId) =>
-        new(t.Id, t.Title, t.Artist, t.Duration, t.FileSize, t.MimeType, t.UploadedAt,
-            t.IsPublic, t.UserId == currentUserId);
+    /// <summary>Own (not soft-deleted) tracks plus everything saved from the public bank.</summary>
+    private IQueryable<Track> LibraryQuery(Guid userId) => _db.Tracks.Where(t =>
+        (t.UserId == userId && !t.IsDeletedByOwner) ||
+        _db.SavedTracks.Any(s => s.UserId == userId && s.TrackId == t.Id));
 
     public async Task<PagedResponse<TrackResponse>> ListAsync(Guid userId, int page, int limit, TrackSort sort, CancellationToken ct)
     {
         page = Math.Max(page, 1);
         limit = Math.Clamp(limit, 1, 200);
 
-        // own (not soft-deleted) + saved
-        var query = _db.Tracks.Where(t =>
-            (t.UserId == userId && !t.IsDeletedByOwner) ||
-            _db.SavedTracks.Any(s => s.UserId == userId && s.TrackId == t.Id));
-
+        var query = LibraryQuery(userId);
         var total = await query.CountAsync(ct);
 
         var items = await ApplySort(query, sort)
             .Skip((page - 1) * limit)
             .Take(limit)
+            .Select(TrackProjections.ToDto(userId))
             .ToListAsync(ct);
 
-        return new PagedResponse<TrackResponse>(
-            items.Select(t => ToDto(t, userId)).ToList(),
-            page, limit, total);
+        return new PagedResponse<TrackResponse>(items, page, limit, total);
     }
 
     public async Task<PagedResponse<TrackResponse>> ListPublicAsync(Guid userId, int page, int limit, string? search, TrackSort sort, CancellationToken ct)
@@ -93,11 +109,10 @@ public class TrackService : ITrackService
         var items = await ApplySort(query, sort)
             .Skip((page - 1) * limit)
             .Take(limit)
+            .Select(TrackProjections.ToDto(userId))
             .ToListAsync(ct);
 
-        return new PagedResponse<TrackResponse>(
-            items.Select(t => ToDto(t, userId)).ToList(),
-            page, limit, total);
+        return new PagedResponse<TrackResponse>(items, page, limit, total);
     }
 
     public async Task<TrackResponse> UploadAsync(Guid userId, UploadTrackForm form, CancellationToken ct)
@@ -143,7 +158,7 @@ public class TrackService : ITrackService
         _logger.LogInformation("Uploaded track {TrackId} for user {UserId} ({Size} bytes, public={Public})",
             track.Id, userId, track.FileSize, track.IsPublic);
 
-        return ToDto(track, userId);
+        return await GetDtoAsync(userId, track.Id, ct);
     }
 
     public async Task<TrackResponse> UpdateAsync(Guid userId, Guid trackId, UpdateTrackRequest request, CancellationToken ct)
@@ -165,7 +180,7 @@ public class TrackService : ITrackService
         if (request.IsPublic.HasValue) track.IsPublic = request.IsPublic.Value;
 
         await _db.SaveChangesAsync(ct);
-        return ToDto(track, userId);
+        return await GetDtoAsync(userId, track.Id, ct);
     }
 
     public async Task SaveAsync(Guid userId, Guid trackId, CancellationToken ct)
@@ -225,6 +240,7 @@ public class TrackService : ITrackService
         {
             _logger.LogWarning(ex, "Failed to remove file {Key} from storage; deleting DB record anyway", track.FileKey);
         }
+        // Cascades away the track's PlayEvents and UserTrackStats along with it.
         _db.Tracks.Remove(track);
         await _db.SaveChangesAsync(ct);
     }
@@ -255,24 +271,101 @@ public class TrackService : ITrackService
     public async Task<TrackResponse?> FindByTitleAsync(Guid userId, string title, CancellationToken ct)
     {
         var needle = $"%{title.Trim()}%";
-        var t = await _db.Tracks
-            .Where(t =>
-                ((t.UserId == userId && !t.IsDeletedByOwner) ||
-                 _db.SavedTracks.Any(s => s.UserId == userId && s.TrackId == t.Id))
-                && EF.Functions.ILike(t.Title, needle))
+        return await LibraryQuery(userId)
+            .Where(t => EF.Functions.ILike(t.Title, needle))
             .OrderByDescending(t => t.UploadedAt)
+            .Select(TrackProjections.ToDto(userId))
             .FirstOrDefaultAsync(ct);
-        return t == null ? null : ToDto(t, userId);
     }
+
+    public async Task<TrackDetailResponse> GetDetailAsync(Guid userId, Guid trackId, CancellationToken ct)
+    {
+        await GetAccessibleAsync(userId, trackId, ct);   // authorization gate, before any stats work
+        var dto = await GetDtoAsync(userId, trackId, ct);
+        var stats = await _stats.GetTrackStatsAsync(userId, trackId, ct);
+        return new TrackDetailResponse(dto, stats);
+    }
+
+    public async Task<IReadOnlyList<TrackResponse>> ShuffleAsync(
+        Guid userId, ShuffleMode mode, int limit, Guid? collectionId, CancellationToken ct)
+    {
+        limit = Math.Clamp(limit, 1, _statsOptions.MaxShuffleLimit);
+
+        var scope = LibraryQuery(userId);
+        if (collectionId.HasValue)
+        {
+            var owns = await _db.Collections.AnyAsync(c => c.Id == collectionId.Value && c.UserId == userId, ct);
+            if (!owns) throw AppException.NotFound("Collection");
+            scope = _db.CollectionTracks
+                .Where(x => x.CollectionId == collectionId.Value)
+                .Select(x => x.Track);
+        }
+
+        var candidates = await scope
+            .Select(t => new
+            {
+                t.Id,
+                MyPlays = t.PlayStats.Where(s => s.UserId == userId).Select(s => s.PlayCount).FirstOrDefault()
+            })
+            .ToListAsync(ct);
+
+        if (candidates.Count == 0) return [];
+
+        var order = WeightedOrder(
+            candidates.Select(c => (c.Id, c.MyPlays)).ToList(),
+            mode, _statsOptions.DiscoverExponent, limit, System.Random.Shared);
+
+        // Postgres does not preserve the order of `WHERE id = ANY(...)`, so restore it here.
+        var byId = await _db.Tracks
+            .Where(t => order.Contains(t.Id))
+            .Select(TrackProjections.ToDto(userId))
+            .ToDictionaryAsync(t => t.Id, ct);
+
+        return order.Where(byId.ContainsKey).Select(id => byId[id]).ToList();
+    }
+
+    /// <summary>
+    /// Ordered weighted sampling without replacement (Efraimidis–Spirakis), in log form for
+    /// numeric stability: key = ln(U)/w with U ~ Uniform(0,1). ln(U) is negative, so a larger
+    /// weight pulls the key towards zero — sort descending and take the first N.
+    /// Discover weights are w = 1/(myPlays+1)^α, so a never-played track (w = 1) always has the
+    /// strongest pull and a much-played one fades out smoothly.
+    /// </summary>
+    internal static List<Guid> WeightedOrder(
+        IReadOnlyList<(Guid Id, int MyPlays)> candidates, ShuffleMode mode, double alpha, int limit, Random rng)
+    {
+        var keyed = new List<(Guid Id, double Key)>(candidates.Count);
+        foreach (var (id, myPlays) in candidates)
+        {
+            var weight = mode == ShuffleMode.Discover
+                ? 1.0 / Math.Pow(Math.Max(myPlays, 0) + 1, alpha)
+                : 1.0;
+
+            var u = rng.NextDouble();
+            if (u <= 0) u = double.Epsilon;   // ln(0) would be -inf
+            keyed.Add((id, Math.Log(u) / weight));
+        }
+
+        return keyed
+            .OrderByDescending(x => x.Key)
+            .Take(limit)
+            .Select(x => x.Id)
+            .ToList();
+    }
+
+    private async Task<TrackResponse> GetDtoAsync(Guid userId, Guid trackId, CancellationToken ct) =>
+        await _db.Tracks
+            .Where(t => t.Id == trackId)
+            .Select(TrackProjections.ToDto(userId))
+            .FirstOrDefaultAsync(ct)
+        ?? throw AppException.NotFound("Track");
 
     private async Task<bool> HasDuplicateInLibraryAsync(Guid userId, string title, string artist, Guid? excludeTrackId, CancellationToken ct)
     {
         var t = title.Trim().ToLower();
         var a = artist.Trim().ToLower();
-        return await _db.Tracks.AnyAsync(track =>
-            track.Id != excludeTrackId &&
-            ((track.UserId == userId && !track.IsDeletedByOwner) ||
-             _db.SavedTracks.Any(s => s.UserId == userId && s.TrackId == track.Id))
+        return await LibraryQuery(userId).AnyAsync(track =>
+            track.Id != excludeTrackId
             && track.Title.ToLower() == t
             && track.Artist.ToLower() == a, ct);
     }

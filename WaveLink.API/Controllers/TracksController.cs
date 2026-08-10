@@ -43,6 +43,29 @@ public class TracksController : ControllerBase
         return Ok(await _tracks.ListPublicAsync(userId, page, limit, search, ParseSort(sort), ct));
     }
 
+    /// <summary>Track card: the track itself plus global and per-caller listening counters.</summary>
+    [HttpGet("{id:guid}")]
+    public async Task<ActionResult<TrackDetailResponse>> Detail(Guid id, CancellationToken ct)
+    {
+        var userId = CurrentUser.GetId(User);
+        return Ok(await _tracks.GetDetailAsync(userId, id, ct));
+    }
+
+    /// <summary>
+    /// A shuffled queue. <c>mode=discover</c> biases towards tracks the caller has played least;
+    /// <c>mode=random</c> is a plain uniform shuffle.
+    /// </summary>
+    [HttpGet("shuffle")]
+    public async Task<ActionResult<IReadOnlyList<TrackResponse>>> Shuffle(
+        [FromQuery] string? mode = null,
+        [FromQuery] int limit = 50,
+        [FromQuery] Guid? collectionId = null,
+        CancellationToken ct = default)
+    {
+        var userId = CurrentUser.GetId(User);
+        return Ok(await _tracks.ShuffleAsync(userId, ParseShuffleMode(mode), limit, collectionId, ct));
+    }
+
     [HttpPost("upload")]
     [RequestSizeLimit(52_428_800)] // 50MB
     public async Task<ActionResult<TrackResponse>> Upload([FromForm] UploadTrackForm form, CancellationToken ct)
@@ -93,23 +116,28 @@ public class TracksController : ControllerBase
             ? track.FileSize
             : await _storage.GetSizeAsync(track.FileKey, ct);
 
+        // The object is piped straight from MinIO into the response body. Never buffer it:
+        // players (ExoPlayer in particular) hold a single open-ended range request for the whole
+        // session, so buffering would pin the entire file in server memory per listener.
+        Response.Headers.AcceptRanges = "bytes";
+        Response.ContentType = track.MimeType;
+
         var rangeHeader = Request.Headers.Range.ToString();
         if (string.IsNullOrEmpty(rangeHeader))
         {
-            var full = await _storage.OpenReadAsync(track.FileKey, ct);
-            Response.Headers.AcceptRanges = "bytes";
-            return File(full, track.MimeType, enableRangeProcessing: false);
+            Response.ContentLength = totalSize;
+            await _storage.CopyToAsync(track.FileKey, null, null, Response.Body, ct);
+            return new EmptyResult();
         }
 
         var (start, end) = ParseRange(rangeHeader, totalSize);
         var length = end - start + 1;
 
-        var partial = await _storage.OpenRangeAsync(track.FileKey, start, length, ct);
         Response.StatusCode = StatusCodes.Status206PartialContent;
-        Response.Headers.AcceptRanges = "bytes";
         Response.Headers.ContentRange = $"bytes {start}-{end}/{totalSize}";
         Response.ContentLength = length;
-        return File(partial, track.MimeType, enableRangeProcessing: false);
+        await _storage.CopyToAsync(track.FileKey, start, length, Response.Body, ct);
+        return new EmptyResult();
     }
 
     private static TrackSort ParseSort(string? sort) => sort?.ToLowerInvariant() switch
@@ -117,6 +145,12 @@ public class TracksController : ControllerBase
         "artist" => TrackSort.Artist,
         "title"  => TrackSort.Title,
         _        => TrackSort.Recent
+    };
+
+    private static ShuffleMode ParseShuffleMode(string? mode) => mode?.ToLowerInvariant() switch
+    {
+        "discover" => ShuffleMode.Discover,
+        _ => ShuffleMode.Random
     };
 
     private static (long Start, long End) ParseRange(string rangeHeader, long total)

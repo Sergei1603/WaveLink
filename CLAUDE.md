@@ -32,6 +32,7 @@ Telegram bot inside the same process.
   Middleware/                   global error handling
   Common/                       AppException, CurrentUser helper
 /client/                        React + TypeScript + Vite frontend (scaffold separately)
+/android/                       Kotlin + Compose + Media3 client (see android/README.md)
 ```
 
 ## Tech stack
@@ -49,28 +50,36 @@ Telegram bot inside the same process.
 
 1. **Controllers stay thin.** They translate HTTP into DTOs, call a service, and return the
    result. No EF queries, no MinIO calls, no business rules in controllers.
-2. **Services own the database and storage.** Each service exposes an interface
+2. **`Track` → `TrackResponse` happens in exactly one place.** `Services/TrackProjections.ToDto`
+   is an `Expression`, so it composes into the SQL query rather than materializing entities first.
+   Both `TrackService` and `CollectionService` use it — this used to be two hand-written copies
+   that drifted, don't recreate that.
+3. **Services own the database and storage.** Each service exposes an interface
    (`IAuthService`, `ITrackService`, ...) registered scoped in `Program.cs`. The Telegram
    `BackgroundService` is a singleton and resolves scoped services through
    `IServiceProvider.CreateScope()` for each update.
-3. **Errors are domain-typed.** Business failures throw `AppException` with an HTTP status.
+4. **Errors are domain-typed.** Business failures throw `AppException` with an HTTP status.
    `ErrorHandlingMiddleware` converts every exception to the uniform
    `{ "error": string, "statusCode": int }` shape. Controllers never `try/catch`.
-4. **Ownership is enforced in services, not at the DB layer.** Every per-resource service
+5. **Ownership is enforced in services, not at the DB layer.** Every per-resource service
    method (`GetOwnedAsync`, `AddTrackAsync`, etc.) loads the entity, then compares
    `UserId` against the caller's id (extracted via `CurrentUser.GetId(User)` from the JWT
    `sub` claim). Mismatches throw `AppException.Forbidden()`.
-5. **Refresh tokens are rotated and hashed.** Login/register issue a (short access + long
+6. **Refresh tokens are rotated and hashed.** Login/register issue a (short access + long
    refresh) pair. Refresh tokens are stored as SHA-256 hashes; on `/refresh` the old one
    is revoked and a new pair is issued. `/logout` revokes the supplied token.
-6. **Configuration is bound to options classes.** `JwtOptions`, `MinioOptions`,
-   `TelegramOptions` are bound from `appsettings.json` and injected via `IOptions<T>`.
-   Never read `IConfiguration` from inside services.
-7. **Streaming uses HTTP Range.** `GET /api/tracks/{id}/stream` parses `Range: bytes=...`,
-   asks MinIO for that byte slice via `OpenRangeAsync`, and replies `206 Partial Content`
-   with `Content-Range` set. Browsers / `wavesurfer.js` will use this for seek and gapless
-   playback. Presigned URLs (15 min TTL) are also available via the storage service if you
-   prefer to hand the client a direct MinIO link.
+7. **Configuration is bound to options classes.** `JwtOptions`, `MinioOptions`,
+   `TelegramOptions`, `PlayStatsOptions` are bound from `appsettings.json` and injected via
+   `IOptions<T>`. Never read `IConfiguration` from inside services.
+8. **Streaming uses HTTP Range and never buffers.** `GET /api/tracks/{id}/stream` parses
+   `Range: bytes=...` and pipes that byte slice from MinIO straight into `Response.Body` via
+   `IMinioStorageService.CopyToAsync`, replying `206 Partial Content` with `Content-Range` set.
+   Do **not** reintroduce a buffering variant here: ExoPlayer holds one open-ended range request
+   for a whole track, so buffering would pin the entire file in memory per listener.
+   `OpenReadAsync` (which does buffer) exists only for Telegram delivery, which needs a seekable
+   stream. Presigned URLs (15 min TTL) are also available via the storage service, but note that
+   `docker-compose.deploy.yml` does not publish the MinIO data port, so they are unreachable
+   from outside the host.
 
 ## Database schema (EF Core)
 
@@ -80,6 +89,13 @@ Telegram bot inside the same process.
 - **collection_tracks** — composite (collection_id, track_id) PK, added_at, both FKs cascade
 - **refresh_tokens** — id, user_id (FK cascade), token_hash (unique, SHA-256), expires_at, created_at, revoked_at
 - **telegram_link_tokens** — id, user_id (FK cascade), token (unique), expires_at, used_at (single-use, 10-min TTL)
+- **PlayEvents** — bigint id, user_id + track_id (both FK cascade), client_event_id, started_at,
+  reported_at, listened_seconds, track_duration, completion_percent, is_significant, is_completed,
+  source (0=Web, 1=Android), title/artist snapshots. Unique `(user_id, client_event_id)` is the
+  idempotency gate for replayed offline queues. Append-only raw log.
+- **UserTrackStats** — composite `(user_id, track_id)` PK, play_count (significant only),
+  start_count (all sessions), completed_count, total_listened_seconds, first/last_played_at.
+  Denormalized rollup, upserted with `ON CONFLICT` on every accepted event.
 
 Usernames are the login identity (there is no e-mail on the account). They are stored with
 the case the user typed, but uniqueness and login lookups are case-insensitive
@@ -101,9 +117,14 @@ All routes require JWT bearer auth except those under `/api/auth/*`.
 | POST | `/api/auth/refresh` | `{ refreshToken }` → new pair (rotates) |
 | POST | `/api/auth/logout` | revokes refresh token |
 | GET  | `/api/tracks?page=&limit=` | paginated, newest first |
+| GET  | `/api/tracks/{id}` | track card: `{ track, stats }` |
+| GET  | `/api/tracks/shuffle?mode=&limit=&collectionId=` | `mode=random\|discover` |
 | POST | `/api/tracks/upload` | multipart: file + title + artist (+ optional duration) |
 | DELETE | `/api/tracks/{id}` | removes from MinIO + DB |
 | GET  | `/api/tracks/{id}/stream` | HTTP Range supported |
+| POST | `/api/plays` | batch of listening sessions, idempotent per `clientEventId` |
+| GET  | `/api/stats/me?from=&to=&limit=` | totals + top tracks + top artists |
+| GET  | `/api/stats/artist?name=` | cross-user aggregates for one artist |
 | GET  | `/api/collections` | list with track counts |
 | POST | `/api/collections` | `{ name }` |
 | POST | `/api/collections/{id}/tracks` | `{ trackId }` |
@@ -113,6 +134,53 @@ All routes require JWT bearer auth except those under `/api/auth/*`.
 | POST | `/api/telegram/link` | returns 410; linking is completed via the bot |
 | GET  | `/api/telegram/status` | `{ botEnabled, linked }` |
 | POST | `/api/telegram/send` | `{ trackId }` → pushes the audio into the caller's bot chat |
+
+## Listening statistics
+
+Clients measure how much of a track was **actually heard** — merged played intervals, so a
+seek forward credits nothing and replaying a chorus counts once — and report finished sessions
+to `POST /api/plays`. The endpoint takes a *batch* because the Android app queues events while
+offline; `clientEventId` is a client-generated idempotency key, so replaying a queue is free.
+
+`PlayStatsService.ReportAsync` never trusts the client: it re-checks access with
+`GetAccessibleAsync` semantics, clamps the reported seconds to `duration × 1.05 + 5`, and decides
+significance itself. A listen is **significant** at `≥60%` of the duration **or** `≥120 s`
+(`PlayStats:SignificantCompletion` / `SignificantSeconds`), and **completed** at `≥95%`.
+Tracks with `Duration = 0` (bot document uploads, failed browser metadata reads) degrade to the
+seconds-only arm, and the reported duration is written back onto the track to self-heal.
+
+Two things to keep in mind when extending this:
+
+- **`PlayCount` means significant listens**, `StartCount` means every session including skips.
+  That distinction is what "сколько раз прослушан" refers to everywhere in the UI.
+- **Aggregate rollups are upserted with `ON CONFLICT`**, and a batch is folded per track first —
+  Postgres refuses to let one `ON CONFLICT` statement touch the same row twice, and an offline
+  queue routinely holds several plays of one track.
+
+Discover-shuffle (`GET /api/tracks/shuffle?mode=discover`) weights each candidate
+`w = 1/(myPlays + 1)^α` with `α = PlayStats:DiscoverExponent` (0.7) and draws an ordered sample
+without replacement via Efraimidis–Spirakis: `key = ln(U)/w`, sort descending. It runs in memory
+because the per-row PRNG has no clean SQL form and libraries are small.
+
+**Privacy:** cross-user figures are aggregate counts only — `totalPlays`, `distinctListeners`,
+`trackCount`. There is no endpoint that reveals *who* listened, and none should be added.
+`/api/stats/artist` additionally requires the caller to have access to at least one track by that
+artist, so the API cannot be used to enumerate the catalogue's popularity.
+
+**EF caveat, learned the hard way:** you cannot reach a navigation property from inside a
+`GroupBy` aggregate — EF pushes any intermediate projection back into the grouping and then fails
+to translate the join. Group on the grouped table's own columns and resolve titles/artists in a
+second query (`PlayStatsService.BuildTopsAsync`).
+
+Telegram `/get` deliveries do **not** count as plays: that is a file download, and the bot has no
+idea whether the user pressed play.
+
+Both clients measure listened seconds the same way (merged played intervals) and let the server
+decide significance. The one exception is Android's `core/PlayStatsRules`, which duplicates the
+60% / 120 s thresholds because it needs to increment a *local* counter immediately — that is what
+keeps discover-shuffle sensible while offline. Change `PlayStats` in `appsettings.json` and that
+object must change with it; the wording shown to users also appears in
+`client/src/components/TrackDetailModal.tsx` and `android/.../TrackDetailSheet.kt`.
 
 ## Telegram bot
 

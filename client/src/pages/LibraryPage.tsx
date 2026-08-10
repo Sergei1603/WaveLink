@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { deleteTrack, listTracks, unsaveTrack } from "../api/tracks";
 import type { Track, TrackSort } from "../types";
 import { TrackRow } from "../components/TrackRow";
+import { ShuffleButtons } from "../components/ShuffleButtons";
 import { SearchIcon } from "../components/Icons";
 import { useAppShell } from "../app/AppShellContext";
 
@@ -74,6 +75,7 @@ export function LibraryPage() {
           </div>
         </div>
         <div className="page-actions">
+          <ShuffleButtons />
           <div className="input-search search">
             <SearchIcon />
             <input

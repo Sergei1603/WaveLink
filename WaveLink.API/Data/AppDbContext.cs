@@ -14,6 +14,8 @@ public class AppDbContext : DbContext
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<TelegramLinkToken> TelegramLinkTokens => Set<TelegramLinkToken>();
     public DbSet<SavedTrack> SavedTracks => Set<SavedTrack>();
+    public DbSet<PlayEvent> PlayEvents => Set<PlayEvent>();
+    public DbSet<UserTrackStat> UserTrackStats => Set<UserTrackStat>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -55,6 +57,41 @@ public class AppDbContext : DbContext
                 .HasForeignKey(x => x.TrackId)
                 .OnDelete(DeleteBehavior.Cascade);
             e.HasIndex(x => x.UserId);
+        });
+
+        b.Entity<PlayEvent>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.TitleSnapshot).IsRequired().HasMaxLength(512);
+            e.Property(x => x.ArtistSnapshot).IsRequired().HasMaxLength(512);
+            e.Property(x => x.Source).HasConversion<int>();
+            e.HasOne(x => x.User)
+                .WithMany()
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Track)
+                .WithMany()
+                .HasForeignKey(x => x.TrackId)
+                .OnDelete(DeleteBehavior.Cascade);
+            // Idempotency gate: an offline queue may be replayed, possibly from two devices at once.
+            e.HasIndex(x => new { x.UserId, x.ClientEventId }).IsUnique();
+            e.HasIndex(x => new { x.UserId, x.StartedAt });
+            e.HasIndex(x => new { x.TrackId, x.StartedAt });
+        });
+
+        b.Entity<UserTrackStat>(e =>
+        {
+            e.HasKey(x => new { x.UserId, x.TrackId });
+            e.HasOne(x => x.User)
+                .WithMany()
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Track)
+                .WithMany(t => t.PlayStats)
+                .HasForeignKey(x => x.TrackId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => x.TrackId);                     // global per-track counters
+            e.HasIndex(x => new { x.UserId, x.PlayCount }); // top tracks without a sort
         });
 
         b.Entity<Collection>(e =>

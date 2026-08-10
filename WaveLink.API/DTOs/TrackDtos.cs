@@ -11,7 +11,16 @@ public record TrackResponse(
     string MimeType,
     DateTime UploadedAt,
     bool IsPublic,
-    bool IsOwned);
+    bool IsOwned,
+    Guid UploaderId,
+    string UploaderUsername,
+    // Per-caller counters. Cheap enough for list rows (one correlated lookup on the
+    // UserTrackStats PK); cross-user totals live on TrackDetailResponse instead.
+    int MyPlays,
+    DateTime? MyLastPlayedAt,
+    bool MyCompleted);
+
+public record TrackDetailResponse(TrackResponse Track, TrackStatsResponse Stats);
 
 public record PagedResponse<T>(IReadOnlyList<T> Items, int Page, int Limit, int Total);
 

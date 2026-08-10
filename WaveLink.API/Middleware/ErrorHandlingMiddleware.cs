@@ -30,6 +30,10 @@ public class ErrorHandlingMiddleware
         {
             await WriteAsync(ctx, 401, ex.Message);
         }
+        catch (OperationCanceledException) when (ctx.RequestAborted.IsCancellationRequested)
+        {
+            // Client went away mid-response. Routine while streaming audio — not an error.
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Unhandled exception");
