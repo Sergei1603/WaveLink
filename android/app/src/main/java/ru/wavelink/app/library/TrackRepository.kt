@@ -40,8 +40,8 @@ class TrackRepository @Inject constructor(
     }
 
     /** Public-bank search is not cached: it is a server-side query, not part of the library. */
-    suspend fun searchPublic(query: String): List<Track> =
-        api.publicTracks(search = query.ifBlank { null }).items.map { it.toModel() }
+    suspend fun searchPublic(query: String, sort: String = "recent"): List<Track> =
+        api.publicTracks(search = query.ifBlank { null }, sort = sort).items.map { it.toModel() }
 
     suspend fun detail(id: String): TrackDetailDto = api.track(id)
 

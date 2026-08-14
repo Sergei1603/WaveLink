@@ -49,6 +49,13 @@ interface TrackDao {
     @Query("$TRACK_SELECT WHERE t.inLibrary = 1")
     suspend fun libraryOnce(): List<TrackWithCounters>
 
+    @Query("SELECT COUNT(*) FROM tracks WHERE inLibrary = 1")
+    fun observeLibraryCount(): Flow<Int>
+
+    /** «N в общем банке» on the profile: the caller's own tracks that are published. */
+    @Query("SELECT COUNT(*) FROM tracks WHERE inLibrary = 1 AND isOwned = 1 AND isPublic = 1")
+    fun observePublishedCount(): Flow<Int>
+
     @Query(
         """$TRACK_SELECT
            WHERE t.id IN (SELECT trackId FROM collection_tracks WHERE collectionId = :collectionId)

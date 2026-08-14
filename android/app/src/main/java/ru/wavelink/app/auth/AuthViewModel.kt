@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import ru.wavelink.app.core.net.toUserMessage
+import ru.wavelink.app.core.prefs.SettingsStore
 import javax.inject.Inject
 
 data class AuthUiState(
@@ -19,7 +20,8 @@ data class AuthUiState(
 
 @HiltViewModel
 class AuthViewModel @Inject constructor(
-    private val repo: AuthRepository
+    private val repo: AuthRepository,
+    private val settings: SettingsStore
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(AuthUiState())
@@ -27,6 +29,15 @@ class AuthViewModel @Inject constructor(
 
     val isSignedIn: StateFlow<Boolean?> = repo.isSignedIn
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    /**
+     * Reachable before sign-in on purpose: on a physical device the default host is the
+     * emulator's loopback alias, so without this the first login can never succeed.
+     */
+    val baseUrl: StateFlow<String> = settings.baseUrl
+        .stateIn(viewModelScope, SharingStarted.Eagerly, "")
+
+    fun setBaseUrl(value: String) = viewModelScope.launch { settings.setBaseUrl(value) }
 
     fun login(username: String, password: String) = submit { repo.login(username, password) }
 

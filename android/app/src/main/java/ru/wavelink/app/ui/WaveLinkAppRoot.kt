@@ -1,39 +1,41 @@
 package ru.wavelink.app.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.BarChart
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.LibraryMusic
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Public
-import androidx.compose.material.icons.filled.QueueMusic
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.navigation.NavDestination.Companion.hierarchy
-import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -47,31 +49,53 @@ import ru.wavelink.app.collections.CollectionsScreen
 import ru.wavelink.app.downloads.DownloadsScreen
 import ru.wavelink.app.downloads.DownloadsViewModel
 import ru.wavelink.app.library.LibraryScreen
+import ru.wavelink.app.library.SearchScreen
 import ru.wavelink.app.library.TrackDetailSheet
 import ru.wavelink.app.player.NowPlayingBar
 import ru.wavelink.app.player.PlayerScreen
 import ru.wavelink.app.player.PlayerViewModel
+import ru.wavelink.app.profile.ProfileScreen
 import ru.wavelink.app.publicbank.PublicBankScreen
-import ru.wavelink.app.settings.SettingsScreen
 import ru.wavelink.app.stats.StatsScreen
+import ru.wavelink.app.stats.TopChartKind
+import ru.wavelink.app.stats.TopChartScreen
+import ru.wavelink.app.ui.components.fadingRule
 import ru.wavelink.app.ui.theme.WaveLinkTheme
+import ru.wavelink.app.ui.theme.Wl
+import ru.wavelink.app.ui.theme.WlType
 
-private enum class TopLevel(val route: String, val label: String, val icon: ImageVector) {
-    Library("library", "Треки", Icons.Filled.LibraryMusic),
-    PublicBank("public", "Банк", Icons.Filled.Public),
-    Collections("collections", "Коллекции", Icons.Filled.QueueMusic),
-    Stats("stats", "Статистика", Icons.Filled.BarChart),
-    Downloads("downloads", "Офлайн", Icons.Filled.Download)
+/**
+ * Three tabs, as the design specifies. Collections, downloads, statistics and the Топ-100 lists
+ * are levels *inside* a tab rather than tabs of their own, so the bar stays legible and every
+ * sub-level can name the level it returns to.
+ */
+private enum class Tab(val route: String, val label: String, val icon: ImageVector) {
+    Library(Routes.LIBRARY, "Библиотека", Icons.Filled.LibraryMusic),
+    Bank(Routes.BANK, "Банк", Icons.Filled.Public),
+    Profile(Routes.PROFILE, "Профиль", Icons.Filled.Person)
 }
 
-private const val ROUTE_PLAYER = "player"
-private const val ROUTE_SETTINGS = "settings"
-private const val ROUTE_COLLECTION = "collections/{collectionId}"
+object Routes {
+    const val LIBRARY = "library"
+    const val BANK = "bank"
+    const val PROFILE = "profile"
+    const val SEARCH = "library/search"
+    const val COLLECTIONS = "library/collections"
+    const val COLLECTION = "library/collections/{collectionId}"
+    const val STATS = "profile/stats"
+    const val TOP = "profile/stats/top/{kind}"
+    const val DOWNLOADS = "downloads/{parent}"
+    const val PLAYER = "player"
+
+    fun collection(id: String) = "library/collections/$id"
+    fun top(kind: TopChartKind) = "profile/stats/top/${kind.name}"
+    fun downloads(parent: String) = "downloads/$parent"
+}
 
 @Composable
 fun WaveLinkAppRoot() {
     WaveLinkTheme {
-        Surface(modifier = Modifier.fillMaxSize()) {
+        Surface(modifier = Modifier.fillMaxSize(), color = Wl.Bg) {
             val authViewModel: AuthViewModel = hiltViewModel()
             val signedIn by authViewModel.isSignedIn.collectAsStateWithLifecycle()
 
@@ -92,121 +116,139 @@ fun WaveLinkAppRoot() {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MainScaffold(onSignOut: () -> Unit) {
     val navController = rememberNavController()
     val backStack by navController.currentBackStackEntryAsState()
-    val current = backStack?.destination
+    val route = backStack?.destination?.route
 
     val playerViewModel: PlayerViewModel = hiltViewModel()
     val downloadsViewModel: DownloadsViewModel = hiltViewModel()
     val playerState by playerViewModel.state.collectAsStateWithLifecycle()
     val playerError by playerViewModel.error.collectAsStateWithLifecycle()
+    val playerNotice by playerViewModel.notice.collectAsStateWithLifecycle()
 
     var detailTrackId by rememberSaveable { mutableStateOf<String?>(null) }
+    val openPlayer = { navController.navigate(Routes.PLAYER) }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("WaveLink") },
-                actions = {
-                    IconButton(onClick = { navController.navigate(ROUTE_SETTINGS) }) {
-                        Icon(Icons.Filled.Settings, contentDescription = "Настройки")
+    // The player is a full-bleed level: it hides the tab bar and the mini-player it grew out of.
+    val chromeVisible = route != Routes.PLAYER
+
+    Box(modifier = Modifier.fillMaxSize().background(Wl.Bg)) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                NavHost(
+                    navController = navController,
+                    startDestination = Routes.LIBRARY,
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    composable(Routes.LIBRARY) {
+                        LibraryScreen(
+                            playingTrackId = playerState.trackId,
+                            onPlay = { track, queue -> playerViewModel.play(track, queue, "Библиотека") },
+                            onOpenDetail = { detailTrackId = it.id },
+                            onShuffle = { mode -> playerViewModel.shuffle(mode) },
+                            onOpenSearch = { navController.navigate(Routes.SEARCH) },
+                            onOpenCollections = { navController.navigate(Routes.COLLECTIONS) },
+                            onOpenDownloads = { navController.navigate(Routes.downloads("Библиотека")) }
+                        )
                     }
-                }
-            )
-        },
-        bottomBar = {
-            Column {
-                NowPlayingBar(
-                    state = playerState,
-                    onToggle = playerViewModel::togglePlayPause,
-                    onNext = playerViewModel::next,
-                    onOpen = { navController.navigate(ROUTE_PLAYER) }
-                )
-                NavigationBar {
-                    TopLevel.entries.forEach { item ->
-                        NavigationBarItem(
-                            selected = current?.hierarchy?.any { it.route == item.route } == true,
-                            onClick = {
-                                navController.navigate(item.route) {
-                                    popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            },
-                            icon = { Icon(item.icon, contentDescription = item.label) },
-                            // Five destinations leave ~72dp per label; without the smaller style
-                            // and maxLines the longest one wraps onto a second line.
-                            label = {
-                                Text(
-                                    item.label,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    style = MaterialTheme.typography.labelSmall
-                                )
+                    composable(Routes.SEARCH) {
+                        SearchScreen(
+                            onBack = navController::popBackStack,
+                            onPlay = { track, queue -> playerViewModel.play(track, queue, "Поиск") },
+                            onOpenDetail = { detailTrackId = it.id },
+                            onOpenBank = {
+                                navController.popBackStack()
+                                navController.switchTab(Routes.BANK)
                             }
                         )
                     }
+                    composable(Routes.COLLECTIONS) {
+                        CollectionsScreen(
+                            onBack = navController::popBackStack,
+                            onOpen = { navController.navigate(Routes.collection(it)) },
+                            onShuffle = { mode -> playerViewModel.shuffle(mode) }
+                        )
+                    }
+                    composable(
+                        Routes.COLLECTION,
+                        arguments = listOf(navArgument("collectionId") { type = NavType.StringType })
+                    ) { entry ->
+                        val id = entry.arguments?.getString("collectionId").orEmpty()
+                        CollectionDetailScreen(
+                            collectionId = id,
+                            playingTrackId = playerState.trackId,
+                            onBack = navController::popBackStack,
+                            onPlay = { track, queue, source -> playerViewModel.play(track, queue, source) },
+                            onOpenDetail = { detailTrackId = it.id },
+                            onShuffle = { mode -> playerViewModel.shuffle(mode, collectionId = id) }
+                        )
+                    }
+                    composable(Routes.BANK) {
+                        PublicBankScreen(
+                            playingTrackId = playerState.trackId,
+                            onPlay = { track, queue -> playerViewModel.play(track, queue, "Общий банк") },
+                            onOpenDetail = { detailTrackId = it.id }
+                        )
+                    }
+                    composable(Routes.PROFILE) {
+                        ProfileScreen(
+                            onOpenStats = { navController.navigate(Routes.STATS) },
+                            onOpenDownloads = { navController.navigate(Routes.downloads("Профиль")) },
+                            onSignOut = onSignOut
+                        )
+                    }
+                    composable(Routes.STATS) {
+                        StatsScreen(
+                            onBack = navController::popBackStack,
+                            onOpenTop = { kind -> navController.navigate(Routes.top(kind)) }
+                        )
+                    }
+                    composable(
+                        Routes.TOP,
+                        arguments = listOf(navArgument("kind") { type = NavType.StringType })
+                    ) { entry ->
+                        val kind = runCatching {
+                            TopChartKind.valueOf(entry.arguments?.getString("kind").orEmpty())
+                        }.getOrDefault(TopChartKind.Tracks)
+                        TopChartScreen(kind = kind, onBack = navController::popBackStack)
+                    }
+                    composable(
+                        Routes.DOWNLOADS,
+                        arguments = listOf(navArgument("parent") { type = NavType.StringType })
+                    ) { entry ->
+                        DownloadsScreen(
+                            parentLabel = entry.arguments?.getString("parent") ?: "Библиотека",
+                            onBack = navController::popBackStack,
+                            viewModel = downloadsViewModel
+                        )
+                    }
+                    composable(Routes.PLAYER) {
+                        PlayerScreen(
+                            onCollapse = navController::popBackStack,
+                            onOpenDetail = { detailTrackId = it },
+                            viewModel = playerViewModel,
+                            onDownload = downloadsViewModel::download,
+                            onRemoveDownload = downloadsViewModel::remove
+                        )
+                    }
                 }
-            }
-        }
-    ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            playerError?.let {
-                Text(
-                    it,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
-                )
+
+                playerError?.let { Toast(it, onDismiss = playerViewModel::dismissError) }
+                if (playerError == null) {
+                    playerNotice?.let { Toast(it, onDismiss = playerViewModel::dismissNotice) }
+                }
             }
 
-            NavHost(
-                navController = navController,
-                startDestination = TopLevel.Library.route,
-                modifier = Modifier.fillMaxSize()
-            ) {
-                composable(TopLevel.Library.route) {
-                    LibraryScreen(
-                        onPlay = playerViewModel::play,
-                        onOpenDetail = { detailTrackId = it.id },
-                        onShuffle = { mode -> playerViewModel.shuffle(mode) }
-                    )
-                }
-                composable(TopLevel.PublicBank.route) {
-                    PublicBankScreen(onPlay = playerViewModel::play)
-                }
-                composable(TopLevel.Collections.route) {
-                    CollectionsScreen(onOpen = { navController.navigate("collections/$it") })
-                }
-                composable(
-                    ROUTE_COLLECTION,
-                    arguments = listOf(navArgument("collectionId") { type = NavType.StringType })
-                ) { entry ->
-                    val id = entry.arguments?.getString("collectionId").orEmpty()
-                    CollectionDetailScreen(
-                        collectionId = id,
-                        onPlay = playerViewModel::play,
-                        onOpenDetail = { detailTrackId = it.id },
-                        onShuffle = { mode -> playerViewModel.shuffle(mode, collectionId = id) }
-                    )
-                }
-                composable(TopLevel.Stats.route) { StatsScreen() }
-                composable(TopLevel.Downloads.route) { DownloadsScreen(viewModel = downloadsViewModel) }
-                composable(ROUTE_SETTINGS) { SettingsScreen(onSignOut = onSignOut) }
-                composable(ROUTE_PLAYER) {
-                    PlayerScreen(
+            if (chromeVisible) {
+                Column(modifier = Modifier.fillMaxWidth().background(Wl.BarBackground)) {
+                    NowPlayingBar(
                         state = playerState,
                         onToggle = playerViewModel::togglePlayPause,
-                        onNext = playerViewModel::next,
-                        onPrevious = playerViewModel::previous,
-                        onSeek = playerViewModel::seekTo,
-                        onStop = {
-                            playerViewModel.stop()
-                            navController.popBackStack()
-                        }
+                        onOpen = openPlayer
                     )
+                    TabBar(navController = navController, currentRoute = route)
                 }
             }
         }
@@ -218,6 +260,97 @@ private fun MainScaffold(onSignOut: () -> Unit) {
             onDismiss = { detailTrackId = null },
             onDownload = { downloadsViewModel.download(id) },
             onRemoveDownload = { downloadsViewModel.remove(id) }
+        )
+    }
+}
+
+/** The design's three-column bar: icon over an 11px label, accent when current. */
+@Composable
+private fun TabBar(navController: NavHostController, currentRoute: String?) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .fadingRule(top = true, inset = 0.dp)
+            .navigationBarsPadding()
+            .padding(top = 4.dp, bottom = 8.dp)
+    ) {
+        Tab.entries.forEach { tab ->
+            val selected = currentRoute != null && currentRoute.startsWith(tab.route)
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable { navController.switchTab(tab.route) }
+                    .padding(vertical = 6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Icon(
+                    tab.icon,
+                    contentDescription = tab.label,
+                    tint = if (selected) Wl.Accent else Wl.text(45),
+                    modifier = Modifier.size(22.dp)
+                )
+                Text(
+                    tab.label,
+                    style = WlType.Micro,
+                    color = if (selected) Wl.Accent else Wl.text(45),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+/**
+ * A tab press returns to that tab's root and keeps the other tabs' stacks — the usual bottom-nav
+ * contract, spelled out because `library/collections` and friends live under a tab's prefix.
+ */
+private fun NavHostController.switchTab(route: String) {
+    navigate(route) {
+        popUpTo(graph.startDestinationId) { saveState = true }
+        launchSingleTop = true
+        restoreState = true
+    }
+}
+
+/** Errors from playback and shuffle land here rather than in a Material snackbar host. */
+@Composable
+private fun Toast(message: String, onDismiss: () -> Unit) {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+        Row(
+            modifier = Modifier
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .clip(Wl.RadiusMd)
+                .background(Wl.Surface)
+                .clickable(onClick = onDismiss)
+                .padding(horizontal = 14.dp, vertical = 10.dp)
+        ) {
+            Text(message, style = WlType.Caption, color = Wl.Accent200)
+        }
+    }
+}
+
+/** The mini-player's play-state glyph, shared with the full player. */
+@Composable
+internal fun PlayPauseIcon(isPlaying: Boolean, tint: androidx.compose.ui.graphics.Color, size: androidx.compose.ui.unit.Dp) {
+    Icon(
+        if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+        contentDescription = if (isPlaying) "Пауза" else "Играть",
+        tint = tint,
+        modifier = Modifier.size(size)
+    )
+}
+
+/** A 2px seam of progress along the top of the mini-player. */
+@Composable
+internal fun HairlineProgress(fraction: Float, modifier: Modifier = Modifier) {
+    Box(modifier = modifier.fillMaxWidth().height(2.dp).background(Wl.Neutral800)) {
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .fillMaxWidth(fraction.coerceIn(0f, 1f))
+                .background(Wl.Accent)
         )
     }
 }

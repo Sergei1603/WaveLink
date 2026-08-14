@@ -8,6 +8,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import dagger.hilt.android.AndroidEntryPoint
+import ru.wavelink.app.core.prefs.SettingsStore
 import ru.wavelink.app.playtracking.PlaybackProgressTracker
 import javax.inject.Inject
 
@@ -20,6 +21,7 @@ class PlaybackService : MediaSessionService() {
 
     @Inject lateinit var cacheDataSourceFactory: CacheDataSource.Factory
     @Inject lateinit var tracker: PlaybackProgressTracker
+    @Inject lateinit var settings: SettingsStore
 
     private var player: ExoPlayer? = null
     private var session: MediaSession? = null
@@ -46,9 +48,14 @@ class PlaybackService : MediaSessionService() {
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
 
     override fun onTaskRemoved(rootIntent: android.content.Intent?) {
-        // Nothing is playing and the user swiped the app away — don't linger as a foreground service.
         val exo = player
-        if (exo == null || !exo.playWhenReady || exo.mediaItemCount == 0) {
+        // Nothing is playing and the user swiped the app away — don't linger as a foreground
+        // service. With «Фоновое воспроизведение» off, stop even if something *is* playing:
+        // that switch is precisely the promise that closing the app ends the sound.
+        if (exo == null || !exo.playWhenReady || exo.mediaItemCount == 0 ||
+            !settings.backgroundPlaybackBlocking()
+        ) {
+            exo?.stop()
             stopSelf()
         }
     }

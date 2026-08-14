@@ -5,50 +5,91 @@ import androidx.lifecycle.viewModelScope
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.offline.Download
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import ru.wavelink.app.core.db.TrackDao
+import ru.wavelink.app.core.prefs.SettingsStore
 import javax.inject.Inject
 
 data class DownloadItem(
     val trackId: String,
     val title: String,
+    val artist: String,
     val stateLabel: String,
     val bytesDownloaded: Long,
-    val percent: Float
+    val percent: Float,
+    val inProgress: Boolean
+)
+
+/** The three figures the storage meter needs: what is pinned, what is cached, what is allowed. */
+data class StorageUiState(
+    val pinnedBytes: Long = 0,
+    val streamCacheBytes: Long = 0,
+    val limitBytes: Long = SettingsStore.DEFAULT_CACHE_BYTES
 )
 
 @UnstableApi
 @HiltViewModel
 class DownloadsViewModel @Inject constructor(
     private val repo: DownloadsRepository,
+    private val settings: SettingsStore,
     trackDao: TrackDao
 ) : ViewModel() {
 
     val items: StateFlow<List<DownloadItem>> =
         combine(repo.observeAll(), trackDao.observeLibrary()) { downloads, tracks ->
-            val titles = tracks.associate { it.id to it.title }
+            val byId = tracks.associateBy { it.id }
             downloads.map { download ->
+                val track = byId[download.trackId]
                 DownloadItem(
                     trackId = download.trackId,
-                    title = titles[download.trackId] ?: download.trackId,
-                    stateLabel = label(download.state),
+                    title = track?.title ?: download.trackId,
+                    artist = track?.artist.orEmpty(),
+                    stateLabel = label(download.state, download.percent),
                     bytesDownloaded = download.bytesDownloaded,
-                    percent = download.percent
+                    percent = download.percent,
+                    inProgress = download.state == Download.STATE_DOWNLOADING ||
+                        download.state == Download.STATE_QUEUED
                 )
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    private val _storage = MutableStateFlow(StorageUiState())
+    val storage: StateFlow<StorageUiState> = _storage.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            combine(repo.observeAll(), settings.cacheBytes) { downloads, limit ->
+                downloads.sumOf { it.bytesDownloaded } to limit
+            }.collect { (pinned, limit) ->
+                // cacheSpace touches the cache index on disk; keep it off the main thread.
+                val total = withContext(Dispatchers.IO) { repo.cacheSpace() }
+                _storage.value = StorageUiState(
+                    pinnedBytes = pinned,
+                    streamCacheBytes = (total - pinned).coerceAtLeast(0),
+                    limitBytes = limit
+                )
+            }
+        }
+    }
 
     fun download(trackId: String) = repo.download(trackId)
 
     fun remove(trackId: String) = repo.remove(trackId)
 
-    private fun label(state: Int): String = when (state) {
+    fun clearStreamCache() { repo.clearStreamCache() }
+
+    private fun label(state: Int, percent: Float): String = when (state) {
         Download.STATE_QUEUED -> "в очереди"
-        Download.STATE_DOWNLOADING -> "скачивается"
-        Download.STATE_COMPLETED -> "доступен офлайн"
+        Download.STATE_DOWNLOADING -> "загружается ${percent.toInt()}%"
+        Download.STATE_COMPLETED -> "закреплено"
         Download.STATE_FAILED -> "ошибка"
         Download.STATE_STOPPED -> "приостановлен"
         Download.STATE_REMOVING -> "удаляется"

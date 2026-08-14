@@ -154,6 +154,18 @@ data class MyStatsDto(
     val topArtists: List<TopArtistDto>
 )
 
+// ---- Telegram ----
+
+/**
+ * Linking a chat still happens on the web and in the bot itself; the app only needs to know
+ * whether a chat is attached so it can offer «В Telegram» at all.
+ */
+@Serializable
+data class TelegramStatusDto(val botEnabled: Boolean, val linked: Boolean)
+
+@Serializable
+data class SendToTelegramBody(val trackId: String)
+
 @Serializable
 data class ArtistStatsDto(
     val artist: String,

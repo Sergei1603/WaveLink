@@ -6,11 +6,14 @@ import androidx.media3.exoplayer.offline.Download
 import androidx.media3.exoplayer.offline.DownloadManager
 import androidx.media3.exoplayer.offline.DownloadRequest
 import androidx.media3.exoplayer.offline.DownloadService
+import androidx.media3.exoplayer.scheduler.Requirements
+import androidx.media3.datasource.cache.SimpleCache
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import ru.wavelink.app.core.db.DownloadDao
 import ru.wavelink.app.core.db.DownloadEntity
@@ -28,12 +31,21 @@ import javax.inject.Singleton
 class DownloadsRepository @Inject constructor(
     @ApplicationContext private val context: Context,
     private val manager: DownloadManager,
+    private val cache: SimpleCache,
     private val dao: DownloadDao,
     private val settings: SettingsStore
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     init {
+        scope.launch {
+            // The Wi-Fi-only switch on the profile screen is this, and only this.
+            settings.wifiOnlyDownloads.collect { wifiOnly ->
+                manager.requirements = Requirements(
+                    if (wifiOnly) Requirements.NETWORK_UNMETERED else Requirements.NETWORK
+                )
+            }
+        }
         manager.addListener(object : DownloadManager.Listener {
             override fun onDownloadChanged(
                 downloadManager: DownloadManager,
@@ -69,6 +81,20 @@ class DownloadsRepository @Inject constructor(
         DownloadService.sendRemoveDownload(
             context, WaveLinkDownloadService::class.java, trackId, /* foreground = */ false
         )
+    }
+
+    /** Bytes the cache holds in total — pinned downloads and opportunistic stream cache together. */
+    fun cacheSpace(): Long = cache.cacheSpace
+
+    /**
+     * Drops only what was cached while streaming. Keys that belong to a download stay, which is
+     * the promise the screen makes: «Скачанное не вытесняется».
+     */
+    fun clearStreamCache() = scope.launch {
+        val pinned = dao.observeAll().first().map { it.trackId }.toSet()
+        cache.keys.toList().forEach { key ->
+            if (key !in pinned) runCatching { cache.removeResource(key) }
+        }
     }
 
     private fun Download.toEntity() = DownloadEntity(

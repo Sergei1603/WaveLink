@@ -100,6 +100,12 @@ interface WaveLinkApi {
     @GET("api/stats/artist")
     suspend fun artistStats(@Query("name") name: String): ArtistStatsDto
 
+    @GET("api/telegram/status")
+    suspend fun telegramStatus(): TelegramStatusDto
+
+    @POST("api/telegram/send")
+    suspend fun sendToTelegram(@Body body: SendToTelegramBody)
+
     companion object {
         /** Marker header stripped by [AuthInterceptor]; marks requests that must stay unauthenticated. */
         const val NO_AUTH = "X-WaveLink-No-Auth"

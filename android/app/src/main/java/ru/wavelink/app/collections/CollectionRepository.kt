@@ -58,9 +58,11 @@ class CollectionRepository @Inject constructor(
         )
     }
 
-    suspend fun create(name: String) {
-        api.createCollection(NameBody(name.trim()))
+    /** Returns the new collection's id, so a "create and add" flow need not re-find it by name. */
+    suspend fun create(name: String): String {
+        val created = api.createCollection(NameBody(name.trim()))
         refreshAll()
+        return created.id
     }
 
     suspend fun delete(id: String) {

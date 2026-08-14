@@ -1,141 +1,220 @@
 package ru.wavelink.app.stats
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Card
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import ru.wavelink.app.ui.components.WlCard
+import ru.wavelink.app.ui.components.WlMeter
+import ru.wavelink.app.ui.components.WlScreenHeader
+import ru.wavelink.app.ui.components.WlSectionHeader
+import ru.wavelink.app.ui.components.WlSegmented
 import ru.wavelink.app.ui.formatListened
+import ru.wavelink.app.ui.theme.Wl
+import ru.wavelink.app.ui.theme.WlType
+import ru.wavelink.app.ui.tracksLabel
 
+/**
+ * Screen 08. A summary, not the whole picture: five tracks and four artists, each with a link
+ * into the full Топ-100. Everything here is the caller's own listening — no one else's.
+ */
 @Composable
-fun StatsScreen(viewModel: StatsViewModel = hiltViewModel()) {
+fun StatsScreen(
+    onBack: () -> Unit,
+    onOpenTop: (TopChartKind) -> Unit,
+    viewModel: StatsViewModel = hiltViewModel()
+) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val stats = state.stats
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            StatsPeriod.entries.forEach { period ->
-                FilterChip(
-                    selected = state.period == period,
-                    onClick = { viewModel.setPeriod(period) },
-                    label = { Text(period.label) }
-                )
-            }
-        }
-
-        if (state.loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-        state.error?.let {
-            Text(
-                it,
-                color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
-            )
-        }
-
-        val stats = state.stats ?: return@Column
+    Column(modifier = Modifier.fillMaxSize().background(Wl.Bg).statusBarsPadding()) {
+        WlScreenHeader(parent = "Профиль", onBack = onBack)
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             item {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StatTile("прослушиваний", stats.totalPlays.toString(), Modifier.weight(1f))
-                    StatTile("треков", stats.distinctTracks.toString(), Modifier.weight(1f))
-                }
-            }
-            item {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StatTile("дослушано", stats.completedPlays.toString(), Modifier.weight(1f))
-                    StatTile("времени", formatListened(stats.totalListenedSeconds), Modifier.weight(1f))
+                Column(modifier = Modifier.padding(top = 4.dp, bottom = 4.dp)) {
+                    Text("Статистика", style = WlType.Title, color = Wl.Text)
+                    Text(
+                        "Что вы слушали и сколько",
+                        style = WlType.Meta,
+                        color = Wl.text(50),
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
                 }
             }
 
-            item { SectionLabel("Топ треков") }
-            items(stats.topTracks, key = { it.trackId }) { track ->
-                ChartRow(
-                    rank = stats.topTracks.indexOf(track) + 1,
+            item {
+                WlSegmented(
+                    options = StatsPeriod.entries.map { it.label },
+                    selected = StatsPeriod.entries.indexOf(state.period),
+                    onSelect = { viewModel.setPeriod(StatsPeriod.entries[it]) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            state.error?.let { message ->
+                item { Text(message, style = WlType.Meta, color = Wl.Accent300) }
+            }
+
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        StatTile(
+                            (stats?.totalPlays ?: 0).toString(),
+                            "прослушиваний",
+                            Modifier.weight(1f)
+                        )
+                        StatTile(
+                            (stats?.distinctTracks ?: 0).toString(),
+                            "разных треков",
+                            Modifier.weight(1f)
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        StatTile(
+                            (stats?.completedPlays ?: 0).toString(),
+                            "дослушано до конца",
+                            Modifier.weight(1f)
+                        )
+                        StatTile(
+                            formatListened(stats?.totalListenedSeconds ?: 0),
+                            "времени прослушано",
+                            Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+
+            item {
+                WlSectionHeader(
+                    title = "Топ треков",
+                    action = "Подробнее →",
+                    onAction = { onOpenTop(TopChartKind.Tracks) },
+                    modifier = Modifier.padding(top = 10.dp)
+                )
+            }
+            val topTracks = stats?.topTracks.orEmpty().take(5)
+            val trackPeak = topTracks.maxOfOrNull { it.plays }?.coerceAtLeast(1) ?: 1
+            items(topTracks.size) { index ->
+                val track = topTracks[index]
+                RankRow(
+                    rank = index + 1,
                     title = track.title,
                     subtitle = track.artist,
-                    count = track.plays
+                    fraction = track.plays.toFloat() / trackPeak,
+                    value = track.plays
                 )
             }
 
-            item { SectionLabel("Топ исполнителей") }
-            items(stats.topArtists, key = { it.artist }) { artist ->
-                ChartRow(
-                    rank = stats.topArtists.indexOf(artist) + 1,
+            item {
+                WlSectionHeader(
+                    title = "Топ исполнителей",
+                    action = "Подробнее →",
+                    onAction = { onOpenTop(TopChartKind.Artists) },
+                    modifier = Modifier.padding(top = 10.dp)
+                )
+            }
+            val topArtists = stats?.topArtists.orEmpty().take(4)
+            val artistPeak = topArtists.maxOfOrNull { it.plays }?.coerceAtLeast(1) ?: 1
+            items(topArtists.size) { index ->
+                val artist = topArtists[index]
+                RankRow(
+                    rank = index + 1,
                     title = artist.artist,
-                    subtitle = "${artist.trackCount} трек(ов) · ${formatListened(artist.listenedSeconds)}",
-                    count = artist.plays
+                    subtitle = "${tracksLabel(artist.trackCount)} · " +
+                        formatListened(artist.listenedSeconds),
+                    fraction = artist.plays.toFloat() / artistPeak,
+                    value = artist.plays
                 )
+            }
+
+            if (stats != null && stats.topTracks.isEmpty()) {
+                item {
+                    Text(
+                        "Пока нечего показать — послушайте что-нибудь.",
+                        style = WlType.BodySm,
+                        color = Wl.text(45),
+                        modifier = Modifier.padding(vertical = 12.dp)
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun StatTile(label: String, value: String, modifier: Modifier = Modifier) {
-    Card(modifier = modifier) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            Text(value, style = MaterialTheme.typography.headlineSmall)
-            Text(
-                label,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+private fun StatTile(value: String, label: String, modifier: Modifier = Modifier) {
+    WlCard(modifier = modifier) {
+        Column {
+            Text(value, style = WlType.Numeric, color = Wl.Text)
+            Text(label, style = WlType.Micro, color = Wl.text(50))
         }
     }
 }
 
+/** rank · title over subtitle · a bar scaled to the leader · the count itself. */
 @Composable
-private fun SectionLabel(text: String) {
-    Text(
-        text,
-        style = MaterialTheme.typography.titleMedium,
-        modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
-    )
-}
-
-@Composable
-private fun ChartRow(rank: Int, title: String, subtitle: String, count: Int) {
+internal fun RankRow(
+    rank: Int,
+    title: String,
+    subtitle: String,
+    fraction: Float,
+    value: Int,
+    modifier: Modifier = Modifier,
+    barWidth: androidx.compose.ui.unit.Dp = 84.dp,
+    rankWidth: androidx.compose.ui.unit.Dp = 16.dp
+) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+        modifier = modifier.fillMaxWidth().heightIn(min = 44.dp),
+        verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text(
             rank.toString(),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            style = WlType.Meta,
+            color = Wl.text(35),
+            textAlign = TextAlign.End,
+            modifier = Modifier.width(rankWidth)
         )
         Column(modifier = Modifier.weight(1f)) {
-            Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(title, style = WlType.BodySm, color = Wl.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
                 subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = WlType.Micro,
+                color = Wl.text(48),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
         }
-        Text(count.toString(), color = MaterialTheme.colorScheme.primary)
+        WlMeter(fraction = fraction, modifier = Modifier.width(barWidth))
+        Text(
+            value.toString(),
+            style = WlType.Meta,
+            color = Wl.Accent300,
+            textAlign = TextAlign.End,
+            modifier = Modifier.width(26.dp)
+        )
     }
 }
