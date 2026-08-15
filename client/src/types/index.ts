@@ -14,6 +14,8 @@ export interface Track {
   uploadedAt: string;
   isPublic: boolean;
   isOwned: boolean;
+  /** Saved from the public bank into the current user's library. */
+  isSaved: boolean;
   uploaderId: string;
   uploaderUsername: string;
   /** Significant listens by the current user. */

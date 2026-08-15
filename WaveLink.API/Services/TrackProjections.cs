@@ -21,6 +21,7 @@ public static class TrackProjections
         t.UploadedAt,
         t.IsPublic,
         t.UserId == currentUserId,
+        t.SavedBy.Any(s => s.UserId == currentUserId),
         t.UserId,
         t.User.Username,
         t.PlayStats.Where(s => s.UserId == currentUserId).Select(s => s.PlayCount).FirstOrDefault(),

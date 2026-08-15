@@ -2,8 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Debug builds talk to a plain-HTTP dev server; the config below restricts cleartext to
-         the emulator loopback alias and private LAN ranges only. -->
+    <!-- Debug builds talk to a plain-HTTP dev server on an address that varies per machine,
+         so they replace the release config (one allowed host) with a blanket cleartext allow. -->
     <application
         android:networkSecurityConfig="@xml/network_security_config"
         tools:replace="android:networkSecurityConfig" />

@@ -11,7 +11,6 @@ import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import ru.wavelink.app.BuildConfig
-import ru.wavelink.app.core.prefs.SettingsStore
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
@@ -33,9 +32,12 @@ object NetworkModule {
     @Provides
     @Singleton
     fun okHttpClient(
+        baseUrlInterceptor: BaseUrlInterceptor,
         authInterceptor: AuthInterceptor,
         authenticator: TokenAuthenticator
     ): OkHttpClient = OkHttpClient.Builder()
+        // First in the chain: everything downstream, logging included, sees the real address.
+        .addInterceptor(baseUrlInterceptor)
         .addInterceptor(authInterceptor)
         .authenticator(authenticator)
         .apply {
@@ -50,9 +52,10 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun retrofit(client: OkHttpClient, json: Json, settings: SettingsStore): Retrofit =
+    fun retrofit(client: OkHttpClient, json: Json): Retrofit =
         Retrofit.Builder()
-            .baseUrl(settings.baseUrlBlocking())
+            // Rewritten per request by BaseUrlInterceptor — see PLACEHOLDER_BASE_URL.
+            .baseUrl(BaseUrlInterceptor.PLACEHOLDER_BASE_URL)
             .client(client)
             .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
             .build()

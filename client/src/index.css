@@ -382,6 +382,7 @@ textarea.input { min-height: 90px; resize: vertical; }
 
 /* — track list — */
 .track-list { display: flex; flex-direction: column; min-width: 0; }
+.load-more { display: flex; justify-content: center; }
 .track-row {
   /* actions column fits five icon buttons: ⓘ, Telegram, ＋, ✎, ✕ */
   display: grid; grid-template-columns: 30px minmax(0, 1fr) auto 62px 192px;

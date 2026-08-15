@@ -116,7 +116,7 @@ All routes require JWT bearer auth except those under `/api/auth/*`.
 | POST | `/api/auth/login` | `{ username, password }` → token pair |
 | POST | `/api/auth/refresh` | `{ refreshToken }` → new pair (rotates) |
 | POST | `/api/auth/logout` | revokes refresh token |
-| GET  | `/api/tracks?page=&limit=` | paginated, newest first |
+| GET  | `/api/tracks?page=&limit=&search=&sort=` | paginated (limit ≤ 200), `search` is ILIKE on title/artist |
 | GET  | `/api/tracks/{id}` | track card: `{ track, stats }` |
 | GET  | `/api/tracks/shuffle?mode=&limit=&collectionId=` | `mode=random\|discover` |
 | POST | `/api/tracks/upload` | multipart: file + title + artist (+ optional duration) |

@@ -18,7 +18,7 @@ public enum ShuffleMode { Random, Discover }
 
 public interface ITrackService
 {
-    Task<PagedResponse<TrackResponse>> ListAsync(Guid userId, int page, int limit, TrackSort sort, CancellationToken ct);
+    Task<PagedResponse<TrackResponse>> ListAsync(Guid userId, int page, int limit, string? search, TrackSort sort, CancellationToken ct);
     Task<PagedResponse<TrackResponse>> ListPublicAsync(Guid userId, int page, int limit, string? search, TrackSort sort, CancellationToken ct);
     Task<TrackResponse> UploadAsync(Guid userId, UploadTrackForm form, CancellationToken ct);
     Task<TrackResponse> UpdateAsync(Guid userId, Guid trackId, UpdateTrackRequest request, CancellationToken ct);
@@ -73,12 +73,23 @@ public class TrackService : ITrackService
         (t.UserId == userId && !t.IsDeletedByOwner) ||
         _db.SavedTracks.Any(s => s.UserId == userId && s.TrackId == t.Id));
 
-    public async Task<PagedResponse<TrackResponse>> ListAsync(Guid userId, int page, int limit, TrackSort sort, CancellationToken ct)
+    // Search runs in SQL on purpose: the clients page through the list, so filtering the
+    // already-loaded page would only ever search the part that happens to be in memory.
+    private static IQueryable<Track> ApplySearch(IQueryable<Track> q, string? search)
+    {
+        if (string.IsNullOrWhiteSpace(search)) return q;
+
+        var needle = $"%{search.Trim()}%";
+        return q.Where(t =>
+            EF.Functions.ILike(t.Title, needle) || EF.Functions.ILike(t.Artist, needle));
+    }
+
+    public async Task<PagedResponse<TrackResponse>> ListAsync(Guid userId, int page, int limit, string? search, TrackSort sort, CancellationToken ct)
     {
         page = Math.Max(page, 1);
         limit = Math.Clamp(limit, 1, 200);
 
-        var query = LibraryQuery(userId);
+        var query = ApplySearch(LibraryQuery(userId), search);
         var total = await query.CountAsync(ct);
 
         var items = await ApplySort(query, sort)
@@ -95,15 +106,7 @@ public class TrackService : ITrackService
         page = Math.Max(page, 1);
         limit = Math.Clamp(limit, 1, 200);
 
-        var query = _db.Tracks.Where(t => t.IsPublic && !t.IsDeletedByOwner);
-
-        if (!string.IsNullOrWhiteSpace(search))
-        {
-            var needle = $"%{search.Trim()}%";
-            query = query.Where(t =>
-                EF.Functions.ILike(t.Title, needle) || EF.Functions.ILike(t.Artist, needle));
-        }
-
+        var query = ApplySearch(_db.Tracks.Where(t => t.IsPublic && !t.IsDeletedByOwner), search);
         var total = await query.CountAsync(ct);
 
         var items = await ApplySort(query, sort)

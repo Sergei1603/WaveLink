@@ -39,9 +39,15 @@ class AuthViewModel @Inject constructor(
 
     fun setBaseUrl(value: String) = viewModelScope.launch { settings.setBaseUrl(value) }
 
-    fun login(username: String, password: String) = submit { repo.login(username, password) }
+    /**
+     * The server address travels with the credentials: it is persisted *before* the call, so the
+     * very first attempt already goes to the address the user just typed.
+     */
+    fun login(server: String, username: String, password: String) =
+        submit { settings.setBaseUrl(server); repo.login(username, password) }
 
-    fun register(username: String, password: String) = submit { repo.register(username, password) }
+    fun register(server: String, username: String, password: String) =
+        submit { settings.setBaseUrl(server); repo.register(username, password) }
 
     fun logout() = viewModelScope.launch { repo.logout() }
 

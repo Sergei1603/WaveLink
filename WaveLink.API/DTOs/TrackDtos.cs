@@ -12,6 +12,9 @@ public record TrackResponse(
     DateTime UploadedAt,
     bool IsPublic,
     bool IsOwned,
+    // Saved from the public bank into the caller's library. Own tracks are not "saved" —
+    // the public bank rows the client marks as already-owned are `IsOwned || IsSaved`.
+    bool IsSaved,
     Guid UploaderId,
     string UploaderUsername,
     // Per-caller counters. Cheap enough for list rows (one correlated lookup on the

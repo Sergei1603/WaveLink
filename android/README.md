@@ -73,18 +73,36 @@ sdk.dir=C\:\\Users\\<you>\\AppData\\Local\\Android\\Sdk
 ./gradlew :app:installDebug
 ```
 
-The debug build talks to `http://10.0.2.2:5000/` — the emulator's alias for the host machine's
-loopback, i.e. the API started with `dotnet run --project WaveLink.API`. On a physical device, set
-your machine's LAN address instead: tap «настройках» on the login screen, or **Профиль → Адрес
-сервера** once signed in. Either way the change takes effect after an app restart.
+The debug build defaults to `http://10.0.2.2:5000/` — the emulator's alias for the host machine's
+loopback, i.e. the API started with `dotnet run --project WaveLink.API`. On a physical device, type
+your machine's LAN address into the **Адрес сервера** field on the sign-in screen (or **Профиль →
+Адрес сервера** once signed in). A bare host is expanded to `http://…/`.
 
-Cleartext HTTP is permitted only for `10.0.2.2`, `localhost` and private LAN ranges, and only in
-debug builds (`src/debug/res/xml/network_security_config.xml`).
+The address applies to the next request, not the next launch: Retrofit is built against a
+placeholder host and `BaseUrlInterceptor` rewrites every request from the stored setting. Do not
+"simplify" that back into `Retrofit.baseUrl(settings.baseUrlBlocking())` — the base URL is then
+frozen at DI-graph construction, and the address typed on the sign-in screen has no effect on the
+sign-in it was typed for.
+
+Debug builds permit cleartext HTTP to any host (`src/debug/res/xml/network_security_config.xml`),
+because the dev server's address differs per machine and `<domain>` cannot express a subnet.
+Release builds use `src/main/res/xml/network_security_config.xml`, which permits cleartext for the
+single production IP `193.222.99.254` and requires TLS everywhere else — drop that exception once
+the server has a domain and a certificate.
 
 ## Tests
 
 ```bash
 ./gradlew :app:testDebugUnitTest
+```
+
+On Windows this fails locally with `ClassNotFoundException` for *every* test class: the repository
+lives under `E:\Учеба\Проект\`, and a JVM whose `sun.jnu.encoding` is `Cp1251` hands the test worker
+a classpath it cannot decode. Compilation and `assembleDebug` are unaffected. Run the tests through
+an ASCII path instead — a junction is enough, no copy required:
+
+```bash
+cmd /c mklink /J C:\wl-android "E:\Учеба\Проект\WaveLink\android" && cd /d C:\wl-android && gradlew.bat :app:testDebugUnitTest
 ```
 
 Covers the parts that are easy to get subtly wrong: interval coverage (`CoverageSetTest`), the

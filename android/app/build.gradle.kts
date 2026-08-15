@@ -51,8 +51,10 @@ android {
 
     testOptions {
         unitTests.all {
-            // The repository sits under a Cyrillic path; without an explicit UTF-8 the test
-            // worker mis-decodes its classpath file and every test class "disappears".
+            // The repository sits under a Cyrillic path. These help, but do not cure it on a
+            // Windows box whose sun.jnu.encoding is Cp1251: the test worker still mis-decodes
+            // its classpath and every test class "disappears" with ClassNotFoundException.
+            // See the README — run the tests through an ASCII path (CI does).
             it.defaultCharacterEncoding = "UTF-8"
             it.jvmArgs("-Dfile.encoding=UTF-8", "-Dsun.jnu.encoding=UTF-8")
         }

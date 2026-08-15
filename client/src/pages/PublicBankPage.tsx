@@ -1,9 +1,12 @@
-import { useEffect, useState } from "react";
-import { listPublicTracks, listTracks, saveTrack } from "../api/tracks";
+import { useCallback, useState } from "react";
+import { listPublicTracks, saveTrack } from "../api/tracks";
 import type { Track, TrackSort } from "../types";
 import { TrackRow } from "../components/TrackRow";
+import { LoadMore } from "../components/LoadMore";
 import { SearchIcon } from "../components/Icons";
 import { useAppShell } from "../app/AppShellContext";
+import { usePagedTracks } from "../hooks/usePagedTracks";
+import { useDebounced } from "../hooks/useDebounced";
 
 const SORTS: { value: TrackSort; label: string }[] = [
   { value: "recent", label: "Недавние" },
@@ -13,39 +16,23 @@ const SORTS: { value: TrackSort; label: string }[] = [
 
 export function PublicBankPage() {
   const { bumpTracks } = useAppShell();
-  const [tracks, setTracks] = useState<Track[]>([]);
-  const [myIds, setMyIds] = useState<Set<string>>(new Set());
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
+  // Only what was saved in this session: `track.isSaved` already covers everything else.
+  const [justSaved, setJustSaved] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<TrackSort>("recent");
+  const query = useDebounced(search.trim(), search ? 300 : 0);
 
-  useEffect(() => {
-    let cancelled = false;
-    const timer = setTimeout(async () => {
-      setLoading(true); setErr(null);
-      try {
-        const [pub, mine] = await Promise.all([
-          listPublicTracks(1, 200, search, sort),
-          listTracks(1, 200, "recent")
-        ]);
-        if (cancelled) return;
-        setTracks(pub.items);
-        setMyIds(new Set(mine.items.map(t => t.id)));
-      } catch (e: any) {
-        if (!cancelled) setErr(e.message);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }, search ? 300 : 0);
+  const fetchPage = useCallback(
+    (page: number, limit: number) => listPublicTracks(page, limit, query, sort),
+    [query, sort]);
 
-    return () => { cancelled = true; clearTimeout(timer); };
-  }, [sort, search]);
+  const { tracks, total, loading, loadingMore, err, hasMore, sentinelRef, loadMore } =
+    usePagedTracks(fetchPage);
 
   const onSave = async (t: Track) => {
     try {
       await saveTrack(t.id);
-      setMyIds(prev => new Set(prev).add(t.id));
+      setJustSaved(prev => new Set(prev).add(t.id));
       bumpTracks();
     } catch (e: any) { alert(e.message); }
   };
@@ -86,7 +73,7 @@ export function PublicBankPage() {
       {loading && <div className="muted">Загрузка…</div>}
       {!loading && tracks.length === 0 && (
         <div className="empty">
-          {search ? "Ничего не найдено." : "Публичных треков пока нет."}
+          {query ? "Ничего не найдено." : "Публичных треков пока нет."}
         </div>
       )}
 
@@ -97,10 +84,19 @@ export function PublicBankPage() {
             track={t}
             queue={tracks}
             onSave={onSave}
-            isSaved={myIds.has(t.id)}
+            isSaved={t.isOwned || t.isSaved || justSaved.has(t.id)}
           />
         ))}
       </div>
+
+      {hasMore && (
+        <LoadMore
+          sentinelRef={sentinelRef}
+          remaining={total - tracks.length}
+          loading={loadingMore}
+          onLoadMore={loadMore}
+        />
+      )}
     </div>
   );
 }

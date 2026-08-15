@@ -1,10 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import { deleteTrack, listTracks, unsaveTrack } from "../api/tracks";
 import type { Track, TrackSort } from "../types";
 import { TrackRow } from "../components/TrackRow";
 import { ShuffleButtons } from "../components/ShuffleButtons";
+import { LoadMore } from "../components/LoadMore";
 import { SearchIcon } from "../components/Icons";
 import { useAppShell } from "../app/AppShellContext";
+import { usePagedTracks } from "../hooks/usePagedTracks";
+import { useDebounced } from "../hooks/useDebounced";
 
 const SORTS: { value: TrackSort; label: string }[] = [
   { value: "recent", label: "Недавние" },
@@ -21,49 +24,29 @@ function totalDuration(tracks: Track[]) {
 
 export function LibraryPage() {
   const { tracksVersion } = useAppShell();
-  const [tracks, setTracks] = useState<Track[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<TrackSort>("recent");
+  const query = useDebounced(search.trim(), search ? 300 : 0);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true); setErr(null);
-      try {
-        const res = await listTracks(1, 200, sort);
-        if (!cancelled) setTracks(res.items);
-      } catch (e: any) {
-        if (!cancelled) setErr(e.message);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [sort, tracksVersion]);
+  const fetchPage = useCallback(
+    (page: number, limit: number) => listTracks(page, limit, sort, query),
+    [sort, query]);
+
+  const {
+    tracks, total, loading, loadingMore, err, hasMore, sentinelRef, loadMore, drop, replace
+  } = usePagedTracks(fetchPage, tracksVersion);
 
   const onDelete = async (t: Track) => {
     if (!confirm(`Удалить «${t.title}»?`)) return;
-    try { await deleteTrack(t.id); setTracks(prev => prev.filter(x => x.id !== t.id)); }
+    try { await deleteTrack(t.id); drop(t.id); }
     catch (e: any) { alert(e.message); }
   };
 
   const onUnsave = async (t: Track) => {
     if (!confirm(`Убрать «${t.title}» из библиотеки?`)) return;
-    try { await unsaveTrack(t.id); setTracks(prev => prev.filter(x => x.id !== t.id)); }
+    try { await unsaveTrack(t.id); drop(t.id); }
     catch (e: any) { alert(e.message); }
   };
-
-  const onUpdated = (updated: Track) =>
-    setTracks(prev => prev.map(t => t.id === updated.id ? updated : t));
-
-  const filtered = useMemo(() => {
-    if (!search) return tracks;
-    const q = search.toLowerCase();
-    return tracks.filter(t =>
-      t.title.toLowerCase().includes(q) || t.artist.toLowerCase().includes(q));
-  }, [tracks, search]);
 
   return (
     <div className="page">
@@ -71,7 +54,7 @@ export function LibraryPage() {
         <div>
           <h1>Библиотека</h1>
           <div className="page-sub">
-            {tracks.length} треков · {totalDuration(tracks)}
+            {total} треков{hasMore ? "" : ` · ${totalDuration(tracks)}`}
           </div>
         </div>
         <div className="page-actions">
@@ -100,27 +83,36 @@ export function LibraryPage() {
 
       {err && <div className="error">{err}</div>}
       {loading && <div className="muted">Загрузка…</div>}
-      {!loading && filtered.length === 0 && (
+      {!loading && tracks.length === 0 && (
         <div className="empty">
-          {search
+          {query
             ? "Треки не найдены."
             : "Библиотека пуста. Загрузите трек или посмотрите Общий банк."}
         </div>
       )}
 
       <div className="track-list">
-        {filtered.map((t, i) => (
+        {tracks.map((t, i) => (
           <TrackRow
             key={t.id}
             track={t}
             index={i + 1}
-            queue={filtered}
+            queue={tracks}
             onDelete={onDelete}
-            onUpdated={onUpdated}
+            onUpdated={replace}
             onUnsave={onUnsave}
           />
         ))}
       </div>
+
+      {hasMore && (
+        <LoadMore
+          sentinelRef={sentinelRef}
+          remaining={total - tracks.length}
+          loading={loadingMore}
+          onLoadMore={loadMore}
+        />
+      )}
     </div>
   );
 }

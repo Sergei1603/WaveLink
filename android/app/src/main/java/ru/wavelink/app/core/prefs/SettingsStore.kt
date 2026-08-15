@@ -35,18 +35,24 @@ class SettingsStore @Inject constructor(@ApplicationContext private val context:
     val backgroundPlayback: Flow<Boolean> = context.dataStore.data.map { it[KEY_BACKGROUND] ?: true }
 
     /**
-     * Read once at startup for the Retrofit/OkHttp graph, which is built eagerly and cannot
-     * suspend. Changing the base URL therefore takes effect after an app restart.
+     * Synchronous read for callers that cannot suspend: the OkHttp interceptor that rewrites
+     * every request's host, plus the player and the download manager. Only the very first call
+     * touches disk; [setBaseUrl] keeps the cache current afterwards, so a new address takes
+     * effect on the next request without an app restart.
      */
-    fun baseUrlBlocking(): String = runBlocking { baseUrl.first() }
+    fun baseUrlBlocking(): String =
+        cachedBaseUrl ?: runBlocking { baseUrl.first() }.also { cachedBaseUrl = it }
 
     fun cacheBytesBlocking(): Long = runBlocking { cacheBytes.first() }
 
     suspend fun setBaseUrl(value: String) {
-        val normalized = value.trim().ifEmpty { BuildConfig.DEFAULT_API_URL }
-            .let { if (it.endsWith("/")) it else "$it/" }
+        val normalized = normalizeBaseUrl(value)
         context.dataStore.edit { it[KEY_BASE_URL] = normalized }
+        cachedBaseUrl = normalized
     }
+
+    @Volatile
+    private var cachedBaseUrl: String? = null
 
     suspend fun setCacheBytes(value: Long) {
         context.dataStore.edit { it[KEY_CACHE_BYTES] = value.coerceIn(MIN_CACHE_BYTES, MAX_CACHE_BYTES) }
@@ -72,5 +78,27 @@ class SettingsStore @Inject constructor(@ApplicationContext private val context:
         const val DEFAULT_CACHE_BYTES = 512L * 1024 * 1024
         const val MIN_CACHE_BYTES = 64L * 1024 * 1024
         const val MAX_CACHE_BYTES = 8L * 1024 * 1024 * 1024
+
+        /**
+         * Shared by the store and by the sign-in form, so that what the field validates and
+         * what gets saved cannot drift apart. A bare host is assumed to be plain HTTP — that is
+         * what a self-hosted WaveLink on an IP address is, and typing a scheme on a phone
+         * keyboard is a chore.
+         */
+        fun normalizeBaseUrl(value: String): String {
+            val trimmed = value.trim()
+            if (trimmed.isEmpty()) return BuildConfig.DEFAULT_API_URL
+            val withScheme =
+                if (trimmed.startsWith("http://", true) || trimmed.startsWith("https://", true)) trimmed
+                else "http://$trimmed"
+            return if (withScheme.endsWith("/")) withScheme else "$withScheme/"
+        }
+
+        /** `http(s)://host[:port][/path]` — deliberately loose, the server has the last word. */
+        private val BaseUrlPattern =
+            Regex("^https?://[A-Za-z0-9._~-]+(\\.[A-Za-z0-9._~-]+)*(:\\d{1,5})?(/[^\\s]*)?$")
+
+        fun isValidBaseUrl(value: String): Boolean =
+            value.isNotBlank() && BaseUrlPattern.matches(normalizeBaseUrl(value))
     }
 }

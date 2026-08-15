@@ -18,9 +18,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -35,11 +33,11 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ru.wavelink.app.R
+import ru.wavelink.app.core.prefs.SettingsStore
 import ru.wavelink.app.ui.components.AuthScrim
 import ru.wavelink.app.ui.components.WlBackdrop
 import ru.wavelink.app.ui.components.WlButton
@@ -67,11 +65,16 @@ fun AuthScreen(
     var username by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
     var revealPassword by rememberSaveable { mutableStateOf(false) }
-    var editingServer by rememberSaveable { mutableStateOf(false) }
+
+    // Null until the user touches the field: the stored address arrives asynchronously, and
+    // seeding local state with the empty initial value would show a blank field for good.
+    var serverEdit by rememberSaveable { mutableStateOf<String?>(null) }
+    val server = serverEdit ?: baseUrl
 
     val usernameValid = remember(username) { UsernamePattern.matches(username) }
     val passwordValid = password.length >= 8
-    val canSubmit = usernameValid && passwordValid && !state.busy
+    val serverValid = remember(server) { SettingsStore.isValidBaseUrl(server) }
+    val canSubmit = usernameValid && passwordValid && serverValid && !state.busy
 
     Box(modifier = Modifier.fillMaxSize().background(Wl.Bg)) {
         WlBackdrop(
@@ -111,6 +114,28 @@ fun AuthScreen(
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Column {
+                    WlFieldLabel("Адрес сервера")
+                    WlInput(
+                        value = server,
+                        onValueChange = { serverEdit = it; viewModel.clearError() },
+                        placeholder = "193.222.99.254",
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Uri,
+                            imeAction = ImeAction.Next
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    when {
+                        server.isNotEmpty() && !serverValid ->
+                            Hint("Например: 193.222.99.254, 192.168.0.10:5000 или https://wavelink.ru")
+                        // Show what the bare host actually expands to, so the http:// default
+                        // never comes as a surprise.
+                        serverValid && !server.startsWith("http", ignoreCase = true) ->
+                            Hint(SettingsStore.normalizeBaseUrl(server))
+                    }
+                }
+
                 Column {
                     WlFieldLabel("Никнейм")
                     WlInput(
@@ -163,8 +188,8 @@ fun AuthScreen(
                         else -> "Войти"
                     },
                     onClick = {
-                        if (registerMode) viewModel.register(username, password)
-                        else viewModel.login(username, password)
+                        if (registerMode) viewModel.register(server, username, password)
+                        else viewModel.login(server, username, password)
                     },
                     style = WlButtonStyle.Primary,
                     enabled = canSubmit,
@@ -188,24 +213,8 @@ fun AuthScreen(
                         modifier = Modifier.clickable(onClick = onToggleMode)
                     )
                 }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth().clickable { editingServer = true },
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    Text("Адрес сервера — в ", style = WlType.Meta, color = Wl.text(40))
-                    Text("настройках", style = WlType.Meta, color = Wl.Accent)
-                }
             }
         }
-    }
-
-    if (editingServer) {
-        ServerDialog(
-            current = baseUrl,
-            onDismiss = { editingServer = false },
-            onSave = { viewModel.setBaseUrl(it); editingServer = false }
-        )
     }
 }
 
@@ -249,34 +258,5 @@ private fun Hint(text: String) {
         style = WlType.Micro,
         color = Wl.text(45),
         modifier = Modifier.padding(top = 5.dp)
-    )
-}
-
-@Composable
-private fun ServerDialog(current: String, onDismiss: () -> Unit, onSave: (String) -> Unit) {
-    var value by remember(current) { mutableStateOf(current) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = Wl.Surface,
-        title = { Text("Адрес сервера", style = WlType.Heading, color = Wl.Text) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                WlInput(
-                    value = value,
-                    onValueChange = { value = it },
-                    placeholder = "http://192.168.0.10:5000/",
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Text(
-                    "Применится после перезапуска приложения.",
-                    style = WlType.Micro,
-                    color = Wl.text(50),
-                    textAlign = TextAlign.Start
-                )
-            }
-        },
-        confirmButton = { TextButton(onClick = { onSave(value) }) { Text("Сохранить", color = Wl.Accent) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена", color = Wl.text(60)) } }
     )
 }

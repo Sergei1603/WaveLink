@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Всё, что не перечислено ниже, обязано ходить по TLS. -->
+    <base-config cleartextTrafficPermitted="false" />
+
+    <!-- Прод-сервер пока живёт на голом IP без сертификата, поэтому для него — и только
+         для него — разрешаем cleartext. Когда появится домен с Let's Encrypt, этот блок
+         нужно удалить: пароль при логине и JWT-токены сейчас идут по сети открытым текстом. -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">193.222.99.254</domain>
+    </domain-config>
+</network-security-config>

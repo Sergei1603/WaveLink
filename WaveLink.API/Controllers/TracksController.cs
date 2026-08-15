@@ -24,11 +24,12 @@ public class TracksController : ControllerBase
     public async Task<ActionResult<PagedResponse<TrackResponse>>> List(
         [FromQuery] int page = 1,
         [FromQuery] int limit = 50,
+        [FromQuery] string? search = null,
         [FromQuery] string? sort = null,
         CancellationToken ct = default)
     {
         var userId = CurrentUser.GetId(User);
-        return Ok(await _tracks.ListAsync(userId, page, limit, ParseSort(sort), ct));
+        return Ok(await _tracks.ListAsync(userId, page, limit, search, ParseSort(sort), ct));
     }
 
     [HttpGet("public")]

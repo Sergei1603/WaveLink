@@ -1,8 +1,10 @@
 import { api, apiUrl } from "./client";
 import type { PagedTracks, Track, TrackSort } from "../types";
 
-export function listTracks(page = 1, limit = 200, sort: TrackSort = "recent") {
-  return api<PagedTracks>(`/api/tracks?page=${page}&limit=${limit}&sort=${sort}`);
+export function listTracks(page = 1, limit = 200, sort: TrackSort = "recent", search = "") {
+  const params = new URLSearchParams({ page: String(page), limit: String(limit), sort });
+  if (search) params.set("search", search);
+  return api<PagedTracks>(`/api/tracks?${params}`);
 }
 
 export function listPublicTracks(page = 1, limit = 200, search = "", sort: TrackSort = "recent") {
