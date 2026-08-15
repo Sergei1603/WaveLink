@@ -15,6 +15,7 @@ class LocalShuffleTest {
         artist = "Artist",
         duration = 200,
         fileSize = 1,
+        mimeType = "audio/mpeg",
         uploadedAt = null,
         isPublic = false,
         isOwned = true,
