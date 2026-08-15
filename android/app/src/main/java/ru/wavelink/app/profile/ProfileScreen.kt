@@ -120,7 +120,7 @@ fun ProfileScreen(
             Column {
                 WlListRow(
                     title = "Адрес сервера",
-                    hint = "Применится после перезапуска",
+                    hint = "Куда приложение ходит за музыкой",
                     ruled = true,
                     onClick = { editingServer = true },
                     trailing = {
@@ -173,7 +173,7 @@ fun ProfileScreen(
         TextDialog(
             title = "Адрес сервера",
             initial = state.baseUrl,
-            hint = "Применится после перезапуска приложения.",
+            hint = "Применится сразу, со следующего запроса.",
             keyboardType = KeyboardType.Uri,
             onDismiss = { editingServer = false },
             onSave = { viewModel.setBaseUrl(it); editingServer = false }
