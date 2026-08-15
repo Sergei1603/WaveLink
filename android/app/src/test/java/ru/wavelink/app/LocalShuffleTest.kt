@@ -5,7 +5,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import ru.wavelink.app.core.model.Track
 import ru.wavelink.app.player.LocalShuffle
-import kotlin.random.Random
 
 class LocalShuffleTest {
 
@@ -29,9 +28,8 @@ class LocalShuffleTest {
     @Test
     fun `discover favours the least played track`() {
         val tracks = listOf(track("never", 0), track("some", 1), track("worn", 100))
-        val random = Random(20260810)
 
-        val firsts = (1..2000).map { LocalShuffle.order(tracks, "discover", limit = 1, random = random).first().id }
+        val firsts = (1..2000).map { LocalShuffle.order(tracks, "discover", seed = it).first().id }
         val counts = firsts.groupingBy { it }.eachCount()
 
         // w = 1/(plays+1)^0.7 → never ≈ 1.0, some ≈ 0.616, worn ≈ 0.0396.
@@ -48,9 +46,8 @@ class LocalShuffleTest {
     @Test
     fun `random mode is roughly uniform`() {
         val tracks = listOf(track("a", 0), track("b", 50), track("c", 100))
-        val random = Random(7)
 
-        val firsts = (1..3000).map { LocalShuffle.order(tracks, "random", limit = 1, random = random).first().id }
+        val firsts = (1..3000).map { LocalShuffle.order(tracks, "random", seed = it).first().id }
         val counts = firsts.groupingBy { it }.eachCount()
 
         // Play counts must not influence a plain shuffle at all.
@@ -58,18 +55,45 @@ class LocalShuffleTest {
     }
 
     @Test
-    fun `every track appears exactly once and the limit is honoured`() {
+    fun `every track appears exactly once`() {
         val tracks = (1..10).map { track("t$it", it) }
 
-        val all = LocalShuffle.order(tracks, "discover", limit = 100, random = Random(1))
+        val all = LocalShuffle.order(tracks, "discover", seed = 1)
         assertEquals(10, all.size)
         assertEquals(10, all.map { it.id }.toSet().size)
+    }
 
-        assertEquals(3, LocalShuffle.order(tracks, "discover", limit = 3, random = Random(1)).size)
+    @Test
+    fun `the same seed reproduces the order`() {
+        val tracks = (1..20).map { track("t$it", it % 4) }
+
+        assertEquals(
+            LocalShuffle.order(tracks, "discover", seed = 42).map { it.id },
+            LocalShuffle.order(tracks, "discover", seed = 42).map { it.id }
+        )
+    }
+
+    @Test
+    fun `pages walk one cycle without gaps or overlaps`() {
+        val tracks = (1..25).map { track("t$it", it % 3) }
+        val expected = LocalShuffle.order(tracks, "discover", seed = 7).map { it.id }
+
+        val paged = (0..25 step 10).flatMap { cursor ->
+            LocalShuffle.page(tracks, "discover", seed = 7, cursor = cursor, limit = 10).map { it.id }
+        }
+
+        assertEquals(expected, paged)
+        assertEquals(25, paged.toSet().size)
+    }
+
+    @Test
+    fun `a page past the end of the cycle is empty`() {
+        val tracks = (1..5).map { track("t$it", 0) }
+        assertTrue(LocalShuffle.page(tracks, "random", seed = 3, cursor = 5, limit = 10).isEmpty())
     }
 
     @Test
     fun `an empty library yields an empty queue`() {
-        assertEquals(emptyList<Track>(), LocalShuffle.order(emptyList(), "discover"))
+        assertEquals(emptyList<Track>(), LocalShuffle.order(emptyList(), "discover", seed = 1))
     }
 }

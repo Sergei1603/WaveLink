@@ -36,6 +36,7 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -72,6 +73,10 @@ import ru.wavelink.app.ui.tracksLabel
 
 /** How far the ⟲/⟳ buttons jump — the figure the design prints inside the glyph. */
 private const val SKIP_SECONDS = 15
+
+/** How much of «Далее» is drawn at once, and how much one tap on «Показать ещё» adds. */
+private const val QUEUE_VISIBLE_INITIAL = 12
+private const val QUEUE_PAGE_STEP = 20
 
 /**
  * The mini-player from screen 02: a seam of progress, the wave mark standing in for cover art,
@@ -145,6 +150,7 @@ fun PlayerScreen(
     val track by viewModel.currentTrack.collectAsStateWithLifecycle()
     val telegramLinked by viewModel.telegramLinked.collectAsStateWithLifecycle()
     var queueOpen by remember { mutableStateOf(true) }
+    var queueVisible by remember { mutableIntStateOf(QUEUE_VISIBLE_INITIAL) }
     var addingToCollection by remember { mutableStateOf(false) }
 
     if (state.trackId == null) {
@@ -350,7 +356,7 @@ fun PlayerScreen(
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             Text(
-                                "ДАЛЕЕ · ${tracksLabel(state.upcoming.size)}".uppercase(),
+                                "ДАЛЕЕ · ${tracksLabel(state.upcomingTotal)}".uppercase(),
                                 style = WlType.Kicker,
                                 color = Wl.text(45)
                             )
@@ -373,9 +379,12 @@ fun PlayerScreen(
                     }
                     if (queueOpen) {
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            state.upcoming.take(12).forEach { entry ->
+                            state.upcoming.take(queueVisible).forEach { entry ->
                                 Row(
-                                    modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = 44.dp)
+                                        .clickable { viewModel.playQueueItem(entry.id) },
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
@@ -401,6 +410,20 @@ fun PlayerScreen(
                                         color = Wl.text(40)
                                     )
                                 }
+                            }
+
+                            // This screen is one big verticalScroll, so a LazyColumn cannot go
+                            // here — the list grows on demand instead. Fetching the next page is
+                            // driven by playback, not by this button.
+                            if (state.upcoming.size > queueVisible) {
+                                Text(
+                                    "Показать ещё",
+                                    style = WlType.Meta,
+                                    color = Wl.Accent,
+                                    modifier = Modifier
+                                        .clickable { queueVisible += QUEUE_PAGE_STEP }
+                                        .padding(vertical = 8.dp)
+                                )
                             }
                         }
                     }

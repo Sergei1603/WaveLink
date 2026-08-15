@@ -12,6 +12,15 @@ import ru.wavelink.app.core.net.WaveLinkApi
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** One page of a shuffled cycle, ready for the player's queue. */
+data class ShufflePage(
+    val tracks: List<Track>,
+    val seed: Int,
+    val nextCursor: Int,
+    val hasMore: Boolean,
+    val total: Int
+)
+
 /**
  * Offline-first: the UI always reads from Room, and [refreshLibrary] is what talks to the server.
  * A failed refresh leaves the cached list on screen rather than blanking it.
@@ -45,8 +54,24 @@ class TrackRepository @Inject constructor(
 
     suspend fun detail(id: String): TrackDetailDto = api.track(id)
 
-    suspend fun shuffle(mode: String, limit: Int = 50, collectionId: String? = null): List<Track> =
-        api.shuffle(mode = mode, limit = limit, collectionId = collectionId).map { it.toModel() }
+    suspend fun shuffle(
+        mode: String,
+        limit: Int = 50,
+        collectionId: String? = null,
+        seed: Int? = null,
+        cursor: Int = 0
+    ): ShufflePage {
+        val page = api.shuffle(
+            mode = mode, limit = limit, collectionId = collectionId, seed = seed, cursor = cursor
+        )
+        return ShufflePage(
+            tracks = page.items.map { it.toModel() },
+            seed = page.seed,
+            nextCursor = page.nextCursor,
+            hasMore = page.hasMore,
+            total = page.total
+        )
+    }
 
     suspend fun update(id: String, title: String?, artist: String?, isPublic: Boolean?) {
         api.updateTrack(id, UpdateTrackBody(title, artist, isPublic))

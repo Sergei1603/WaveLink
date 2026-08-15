@@ -1,6 +1,6 @@
 import { api } from "./client";
 import type {
-  ArtistStats, MyStats, PlayEventReport, ReportPlaysResponse, ShuffleMode, Track, TrackDetail
+  ArtistStats, MyStats, PlayEventReport, ReportPlaysResponse, ShuffleMode, ShufflePage, TrackDetail
 } from "../types";
 
 export function reportPlays(events: PlayEventReport[]) {
@@ -11,10 +11,20 @@ export function getTrackDetail(id: string) {
   return api<TrackDetail>(`/api/tracks/${id}`);
 }
 
-export function getShuffle(mode: ShuffleMode, limit = 50, collectionId?: string) {
-  const params = new URLSearchParams({ mode, limit: String(limit) });
-  if (collectionId) params.set("collectionId", collectionId);
-  return api<Track[]>(`/api/tracks/shuffle?${params}`);
+export interface ShuffleQuery {
+  limit?: number;
+  collectionId?: string;
+  /** Omit to start a new cycle; pass the seed of the running one to page through it. */
+  seed?: number;
+  cursor?: number;
+}
+
+export function getShuffle(mode: ShuffleMode, opts: ShuffleQuery = {}) {
+  const params = new URLSearchParams({ mode, limit: String(opts.limit ?? 50) });
+  if (opts.collectionId) params.set("collectionId", opts.collectionId);
+  if (opts.seed !== undefined) params.set("seed", String(opts.seed));
+  if (opts.cursor) params.set("cursor", String(opts.cursor));
+  return api<ShufflePage>(`/api/tracks/shuffle?${params}`);
 }
 
 export function getMyStats(from?: string, to?: string, limit = 10) {

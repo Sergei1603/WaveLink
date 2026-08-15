@@ -41,6 +41,18 @@ export interface TrackDetail {
 
 export type ShuffleMode = "random" | "discover";
 
+/**
+ * One page of a shuffled cycle. `seed` pins the order — hand it back with `nextCursor` to get
+ * the next page; once `hasMore` is false the cycle is spent and a seedless request starts a new one.
+ */
+export interface ShufflePage {
+  items: Track[];
+  seed: number;
+  nextCursor: number;
+  hasMore: boolean;
+  total: number;
+}
+
 export interface TopTrackItem {
   trackId: string;
   title: string;

@@ -7,6 +7,7 @@ import { authHeader } from "../api/client";
 import { streamUrl } from "../api/tracks";
 import { CoverageSet } from "../player/listeningTracker";
 import { flushPlays, reportPlayNow } from "../player/playReporter";
+import { QueuePanel } from "./QueuePanel";
 import { VolumeIcon } from "./Icons";
 
 function fmt(s: number) {
@@ -210,6 +211,8 @@ export function NowPlaying() {
             />
             <button className="btn btn-danger btn-icon" onClick={stop} title="Закрыть">✕</button>
           </div>
+
+          <QueuePanel />
         </>
       ) : (
         <div className="now-idle">

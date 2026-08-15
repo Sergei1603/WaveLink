@@ -27,6 +27,18 @@ public record TrackDetailResponse(TrackResponse Track, TrackStatsResponse Stats)
 
 public record PagedResponse<T>(IReadOnlyList<T> Items, int Page, int Limit, int Total);
 
+/// <summary>
+/// One page of a shuffled cycle. <c>Seed</c> pins the order, <c>NextCursor</c> is where the next
+/// page starts, and <c>Total</c> is the size of the cycle. When <c>HasMore</c> is false the cycle
+/// is exhausted; a client that wants to keep playing asks for a new one without a seed.
+/// </summary>
+public record ShufflePageResponse(
+    IReadOnlyList<TrackResponse> Items,
+    int Seed,
+    int NextCursor,
+    bool HasMore,
+    int Total);
+
 public class UploadTrackForm
 {
     [Required] public IFormFile File { get; set; } = default!;

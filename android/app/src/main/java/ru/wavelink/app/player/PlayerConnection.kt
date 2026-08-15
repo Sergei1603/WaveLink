@@ -41,9 +41,20 @@ data class PlayerUiState(
     val hasPrevious: Boolean = false,
     /** What the queue was started from — the player's «Сейчас играет · …» line. */
     val source: String = "",
-    /** Everything after the current item; the mock's «Далее · N треков». */
-    val upcoming: List<QueueEntry> = emptyList()
+    /** The first [UPCOMING_PUBLISH_CAP] items after the current one; the mock's «Далее». */
+    val upcoming: List<QueueEntry> = emptyList(),
+    /** How many items actually follow the current one — [upcoming] is only the visible head. */
+    val upcomingTotal: Int = 0
 )
+
+/**
+ * The queue is republished twice a second, and an endless shuffle keeps hundreds of items in the
+ * timeline — so only the head is copied out. The count the UI shows comes from [PlayerUiState.upcomingTotal].
+ */
+private const val UPCOMING_PUBLISH_CAP = 100
+
+/** How many played-out items stay behind the current one before the timeline is trimmed. */
+private const val MAX_PLAYED_KEPT = 50
 
 /**
  * The UI's handle on [PlaybackService]. Owns the MediaController and republishes the player's
@@ -101,6 +112,38 @@ class PlayerConnection @Inject constructor(
         c.play()
     }
 
+    /** Appends the next shuffle page. Playback is untouched — the queue just gets longer. */
+    fun addToQueue(tracks: List<Track>) {
+        val c = controller ?: return
+        if (tracks.isEmpty()) return
+        val baseUrl = settings.baseUrlBlocking()
+        val firstNew = c.mediaItemCount
+        c.addMediaItems(tracks.map { it.toMediaItem(baseUrl) })
+        // A page that arrived after the queue had already run dry has to restart playback itself.
+        if (c.playbackState == Player.STATE_ENDED) {
+            c.seekTo(firstNew, 0L)
+            c.prepare()
+            c.play()
+        }
+        trimPlayed(c)
+        publish(c)
+    }
+
+    /** Jumps to a track the user tapped in the «Далее» list. */
+    fun playQueueItem(mediaId: String) {
+        val c = controller ?: return
+        val index = (0 until c.mediaItemCount).firstOrNull { c.getMediaItemAt(it).mediaId == mediaId }
+            ?: return
+        c.seekToDefaultPosition(index)
+        c.play()
+    }
+
+    /** An endless queue would otherwise carry the whole evening's history in the timeline. */
+    private fun trimPlayed(player: Player) {
+        val drop = player.currentMediaItemIndex - MAX_PLAYED_KEPT
+        if (drop > 0) player.removeMediaItems(0, drop)
+    }
+
     fun togglePlayPause() {
         val c = controller ?: return
         if (c.isPlaying) c.pause() else c.play()
@@ -141,8 +184,10 @@ class PlayerConnection @Inject constructor(
     private fun publish(player: Player) {
         val item = player.currentMediaItem
         val current = player.currentMediaItemIndex
+        val upcomingTotal = (player.mediaItemCount - current - 1).coerceAtLeast(0)
         val upcoming = buildList {
-            for (i in current + 1 until player.mediaItemCount) {
+            val last = minOf(player.mediaItemCount, current + 1 + UPCOMING_PUBLISH_CAP)
+            for (i in current + 1 until last) {
                 val media = player.getMediaItemAt(i)
                 add(
                     QueueEntry(
@@ -164,7 +209,8 @@ class PlayerConnection @Inject constructor(
             hasNext = player.hasNextMediaItem(),
             hasPrevious = player.hasPreviousMediaItem(),
             source = source,
-            upcoming = upcoming
+            upcoming = upcoming,
+            upcomingTotal = upcomingTotal
         )
     }
 }

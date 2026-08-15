@@ -461,6 +461,50 @@ textarea.input { min-height: 90px; resize: vertical; }
 .now-collections a:hover { color: var(--color-accent); }
 .now-collections .count { font-size: 11px; color: color-mix(in srgb, var(--color-text) 40%, transparent); }
 
+/* — «Далее»: the queue under the player. Scrolls on its own so the panel keeps its shape
+   however long the endless queue grows; the bottom of that scroll is what pulls the next page. */
+.now-queue { display: flex; flex-direction: column; gap: 8px; }
+.now-queue-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.now-queue-toggle {
+  display: flex; align-items: center; gap: 6px;
+  background: none; border: 0; padding: 0; cursor: pointer;
+}
+.now-queue-toggle .chev { font-size: 12px; color: color-mix(in srgb, var(--color-text) 45%, transparent); }
+.now-queue-toggle:hover .section-label { color: var(--color-accent); }
+.now-queue-clear {
+  background: none; border: 0; padding: 4px 2px; cursor: pointer;
+  font-size: 12px; color: var(--color-accent);
+}
+.now-queue-list {
+  display: flex; flex-direction: column; gap: 2px;
+  max-height: 340px; overflow-y: auto;
+}
+.now-queue-row {
+  display: grid; grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center; gap: 10px;
+  padding: 6px 4px; border: 0; border-radius: var(--radius-sm);
+  background: none; text-align: left; cursor: pointer;
+}
+.now-queue-row:hover { background: color-mix(in srgb, var(--color-text) 6%, transparent); }
+.now-queue-row .pos {
+  font-size: 11px; font-variant-numeric: tabular-nums;
+  color: color-mix(in srgb, var(--color-text) 35%, transparent);
+}
+.now-queue-row .meta { display: flex; flex-direction: column; min-width: 0; }
+.now-queue-row .t {
+  font-size: 13px; color: color-mix(in srgb, var(--color-text) 80%, transparent);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.now-queue-row .a {
+  font-size: 11px; color: color-mix(in srgb, var(--color-text) 45%, transparent);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.now-queue-row:hover .t { color: var(--color-accent); }
+.now-queue-row .dur {
+  font-size: 11px; font-variant-numeric: tabular-nums;
+  color: color-mix(in srgb, var(--color-text) 40%, transparent);
+}
+
 /* Volume slider, themed to the accent. */
 .range {
   -webkit-appearance: none; appearance: none;

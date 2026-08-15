@@ -29,7 +29,7 @@ public interface ITrackService
     Task<Track> GetAccessibleAsync(Guid userId, Guid trackId, CancellationToken ct);
     Task<TrackResponse?> FindByTitleAsync(Guid userId, string title, CancellationToken ct);
     Task<TrackDetailResponse> GetDetailAsync(Guid userId, Guid trackId, CancellationToken ct);
-    Task<IReadOnlyList<TrackResponse>> ShuffleAsync(Guid userId, ShuffleMode mode, int limit, Guid? collectionId, CancellationToken ct);
+    Task<ShufflePageResponse> ShuffleAsync(Guid userId, ShuffleMode mode, int limit, Guid? collectionId, int? seed, int cursor, CancellationToken ct);
 }
 
 public class TrackService : ITrackService
@@ -289,10 +289,14 @@ public class TrackService : ITrackService
         return new TrackDetailResponse(dto, stats);
     }
 
-    public async Task<IReadOnlyList<TrackResponse>> ShuffleAsync(
-        Guid userId, ShuffleMode mode, int limit, Guid? collectionId, CancellationToken ct)
+    public async Task<ShufflePageResponse> ShuffleAsync(
+        Guid userId, ShuffleMode mode, int limit, Guid? collectionId, int? seed, int cursor, CancellationToken ct)
     {
         limit = Math.Clamp(limit, 1, _statsOptions.MaxShuffleLimit);
+        cursor = Math.Max(cursor, 0);
+        // The first page carries no seed: the server picks one and the client hands it back for
+        // every later page, which is what makes one shuffled cycle pageable.
+        var cycleSeed = seed ?? System.Random.Shared.Next();
 
         var scope = LibraryQuery(userId);
         if (collectionId.HasValue)
@@ -300,7 +304,7 @@ public class TrackService : ITrackService
             var owns = await _db.Collections.AnyAsync(c => c.Id == collectionId.Value && c.UserId == userId, ct);
             if (!owns) throw AppException.NotFound("Collection");
             scope = _db.CollectionTracks
-                .Where(x => x.CollectionId == collectionId.Value)
+                .Where(x => x.CollectionId == collectionId.Value && !x.Track.IsDeletedByOwner)
                 .Select(x => x.Track);
         }
 
@@ -312,19 +316,24 @@ public class TrackService : ITrackService
             })
             .ToListAsync(ct);
 
-        if (candidates.Count == 0) return [];
+        if (candidates.Count == 0) return new ShufflePageResponse([], cycleSeed, 0, false, 0);
 
         var order = WeightedOrder(
             candidates.Select(c => (c.Id, c.MyPlays)).ToList(),
-            mode, _statsOptions.DiscoverExponent, limit, System.Random.Shared);
+            mode, _statsOptions.DiscoverExponent, cycleSeed);
+
+        var page = order.Skip(cursor).Take(limit).ToList();
 
         // Postgres does not preserve the order of `WHERE id = ANY(...)`, so restore it here.
         var byId = await _db.Tracks
-            .Where(t => order.Contains(t.Id))
+            .Where(t => page.Contains(t.Id))
             .Select(TrackProjections.ToDto(userId))
             .ToDictionaryAsync(t => t.Id, ct);
 
-        return order.Where(byId.ContainsKey).Select(id => byId[id]).ToList();
+        var items = page.Where(byId.ContainsKey).Select(id => byId[id]).ToList();
+        var nextCursor = Math.Min(cursor + page.Count, order.Count);
+
+        return new ShufflePageResponse(items, cycleSeed, nextCursor, nextCursor < order.Count, order.Count);
     }
 
     /// <summary>
@@ -333,12 +342,22 @@ public class TrackService : ITrackService
     /// weight pulls the key towards zero — sort descending and take the first N.
     /// Discover weights are w = 1/(myPlays+1)^α, so a never-played track (w = 1) always has the
     /// strongest pull and a much-played one fades out smoothly.
+    ///
+    /// The whole order is returned, and the same <paramref name="seed"/> reproduces it, which is
+    /// what lets a client page through one cycle. Reproducibility holds only for an unchanged
+    /// candidate set: an upload, a save, or a play count that grew in the meantime shifts the
+    /// keys, so a page can repeat or skip a track. Clients dedupe their queue tail instead of the
+    /// server keeping per-cycle state.
     /// </summary>
     internal static List<Guid> WeightedOrder(
-        IReadOnlyList<(Guid Id, int MyPlays)> candidates, ShuffleMode mode, double alpha, int limit, Random rng)
+        IReadOnlyList<(Guid Id, int MyPlays)> candidates, ShuffleMode mode, double alpha, int seed)
     {
-        var keyed = new List<(Guid Id, double Key)>(candidates.Count);
-        foreach (var (id, myPlays) in candidates)
+        // Sorted first, so the RNG draw a given track gets depends on the seed alone.
+        var ordered = candidates.OrderBy(c => c.Id).ToList();
+        var rng = new Random(seed);
+
+        var keyed = new List<(Guid Id, double Key)>(ordered.Count);
+        foreach (var (id, myPlays) in ordered)
         {
             var weight = mode == ShuffleMode.Discover
                 ? 1.0 / Math.Pow(Math.Max(myPlays, 0) + 1, alpha)
@@ -351,7 +370,6 @@ public class TrackService : ITrackService
 
         return keyed
             .OrderByDescending(x => x.Key)
-            .Take(limit)
             .Select(x => x.Id)
             .ToList();
     }

@@ -53,18 +53,21 @@ public class TracksController : ControllerBase
     }
 
     /// <summary>
-    /// A shuffled queue. <c>mode=discover</c> biases towards tracks the caller has played least;
-    /// <c>mode=random</c> is a plain uniform shuffle.
+    /// One page of a shuffled queue. <c>mode=discover</c> biases towards tracks the caller has
+    /// played least; <c>mode=random</c> is a plain uniform shuffle. Omit <c>seed</c> to start a
+    /// cycle and hand the returned one back with <c>cursor</c> to page through it.
     /// </summary>
     [HttpGet("shuffle")]
-    public async Task<ActionResult<IReadOnlyList<TrackResponse>>> Shuffle(
+    public async Task<ActionResult<ShufflePageResponse>> Shuffle(
         [FromQuery] string? mode = null,
         [FromQuery] int limit = 50,
         [FromQuery] Guid? collectionId = null,
+        [FromQuery] int? seed = null,
+        [FromQuery] int cursor = 0,
         CancellationToken ct = default)
     {
         var userId = CurrentUser.GetId(User);
-        return Ok(await _tracks.ShuffleAsync(userId, ParseShuffleMode(mode), limit, collectionId, ct));
+        return Ok(await _tracks.ShuffleAsync(userId, ParseShuffleMode(mode), limit, collectionId, seed, cursor, ct));
     }
 
     [HttpPost("upload")]

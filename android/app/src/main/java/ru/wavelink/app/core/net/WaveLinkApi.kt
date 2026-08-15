@@ -51,8 +51,10 @@ interface WaveLinkApi {
     suspend fun shuffle(
         @Query("mode") mode: String,
         @Query("limit") limit: Int = 50,
-        @Query("collectionId") collectionId: String? = null
-    ): List<TrackDto>
+        @Query("collectionId") collectionId: String? = null,
+        @Query("seed") seed: Int? = null,
+        @Query("cursor") cursor: Int = 0
+    ): ShufflePageDto
 
     @PATCH("api/tracks/{id}")
     suspend fun updateTrack(@Path("id") id: String, @Body body: UpdateTrackBody): TrackDto

@@ -118,7 +118,7 @@ All routes require JWT bearer auth except those under `/api/auth/*`.
 | POST | `/api/auth/logout` | revokes refresh token |
 | GET  | `/api/tracks?page=&limit=&search=&sort=` | paginated (limit ≤ 200), `search` is ILIKE on title/artist |
 | GET  | `/api/tracks/{id}` | track card: `{ track, stats }` |
-| GET  | `/api/tracks/shuffle?mode=&limit=&collectionId=` | `mode=random\|discover` |
+| GET  | `/api/tracks/shuffle?mode=&limit=&collectionId=&seed=&cursor=` | `mode=random\|discover`; one page of a cycle → `{ items, seed, nextCursor, hasMore, total }` |
 | POST | `/api/tracks/upload` | multipart: file + title + artist (+ optional duration) |
 | DELETE | `/api/tracks/{id}` | removes from MinIO + DB |
 | GET  | `/api/tracks/{id}/stream` | HTTP Range supported |
@@ -161,6 +161,21 @@ Discover-shuffle (`GET /api/tracks/shuffle?mode=discover`) weights each candidat
 `w = 1/(myPlays + 1)^α` with `α = PlayStats:DiscoverExponent` (0.7) and draws an ordered sample
 without replacement via Efraimidis–Spirakis: `key = ln(U)/w`, sort descending. It runs in memory
 because the per-row PRNG has no clean SQL form and libraries are small.
+
+**Shuffling is endless and paged.** `WeightedOrder` sorts candidates by id, seeds `new Random(seed)`
+and returns the *whole* order, so the same seed reproduces it and `cursor` slices it — that is one
+*cycle*. A client starts a cycle without a seed, hands the returned seed back with `nextCursor` for
+each further page, and once `hasMore` is false asks seedlessly again, which opens a fresh cycle;
+in discover mode that cycle is already reweighted by everything played in the previous one. Both
+players prefetch the next page when ~15 tracks remain ahead, so playback never stalls at a page
+boundary. Reproducibility only holds for an unchanged candidate set — an upload or a play count
+that grew shifts the keys — so **clients dedupe against their queue tail** (window capped at
+`cycleTotal − 1`, otherwise a short library would lose an entire new cycle) instead of the server
+keeping per-cycle state. The web queue lives in `client/src/player/PlayerContext.tsx` (the shuffle
+*feed*) and is drawn by `components/QueuePanel.tsx`; on Android the feed is in `PlayerViewModel`
+and the queue itself is the Media3 timeline, topped up through `PlayerConnection.addToQueue`.
+Clicking a row in either queue keeps the feed alive; clicking a track in a list replaces it with a
+finite queue, and «Очистить» drops it.
 
 **Privacy:** cross-user figures are aggregate counts only — `totalPlays`, `distinctListeners`,
 `trackCount`. There is no endpoint that reveals *who* listened, and none should be added.

@@ -49,6 +49,19 @@ data class PagedDto<T>(
     val total: Int
 )
 
+/**
+ * One page of a shuffled cycle. [seed] pins the order — hand it back with [nextCursor] for the
+ * next page; once [hasMore] is false the cycle is spent and a seedless request opens a new one.
+ */
+@Serializable
+data class ShufflePageDto(
+    val items: List<TrackDto>,
+    val seed: Int,
+    val nextCursor: Int,
+    val hasMore: Boolean,
+    val total: Int
+)
+
 @Serializable
 data class TrackStatsDto(
     val trackId: String,
