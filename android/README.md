@@ -127,8 +127,18 @@ significance rule (`PlayStatsRulesTest`), and the discover-shuffle distribution
   deciding whether to keep playing after the app is swiped away.
 - `core/db` — Room mirror of the library plus the outbox of unsent play events. Screens read
   from Room, never from the network directly, so the app opens fully usable while offline.
+  `TrackRepository.refreshLibrary` walks *every* page of `GET /api/tracks` (the server caps a page
+  at 200) and swaps Room once at the end — the whole library has to be mirrored, or the list, the
+  search and offline shuffle would all silently stop at the first page.
+- `publicbank` — the one list that is *not* mirrored: the bank belongs to everybody, so it stays a
+  server-side query and grows a page at a time behind «Показать ещё». Paging asks for the next page
+  of the query the rows on screen came from, which is not the same as the query in the field — that
+  one runs 300 ms ahead of the request.
 - `player` — `PlaybackService : MediaSessionService` owns the single ExoPlayer; `PlayerConnection`
   republishes its state to Compose. `LocalShuffle` is the offline twin of the server's shuffle.
+  `WaveLinkNotificationProvider` gives the media notification a dark generated artwork: from
+  Android 12 on, SystemUI tints the shade and lock-screen widget from the large icon and falls
+  back to the device theme — a white panel — when a track has none.
 - `playtracking` — measures what was *actually heard* (merged intervals, so a seek credits
   nothing), queues one event per finished session, and flushes it with WorkManager.
   `PlayStatsRules` duplicates the server's thresholds and must stay in sync with

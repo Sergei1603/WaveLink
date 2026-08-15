@@ -7,10 +7,23 @@ import ru.wavelink.app.core.model.Track
 import ru.wavelink.app.core.model.toEntity
 import ru.wavelink.app.core.model.toModel
 import ru.wavelink.app.core.net.TrackDetailDto
+import ru.wavelink.app.core.net.TrackDto
 import ru.wavelink.app.core.net.UpdateTrackBody
 import ru.wavelink.app.core.net.WaveLinkApi
 import javax.inject.Inject
 import javax.inject.Singleton
+
+/** What `GET /api/tracks` accepts as the largest page. */
+private const val LIBRARY_PAGE_LIMIT = 200
+
+/** A stop so a server that misreports `total` cannot spin the walk forever. */
+private const val MAX_LIBRARY_PAGES = 100
+
+/** One tap on «Показать ещё» in the bank; the web client's `PAGE_SIZE` is the same number. */
+private const val BANK_PAGE_LIMIT = 100
+
+/** One page of a server-side track query, with how many rows match in all. */
+data class TrackPage(val tracks: List<Track>, val total: Int)
 
 /** One page of a shuffled cycle, ready for the player's queue. */
 data class ShufflePage(
@@ -42,15 +55,43 @@ class TrackRepository @Inject constructor(
     suspend fun collectionTracksOnce(collectionId: String): List<Track> =
         trackDao.collectionTracksOnce(collectionId).map { it.toModel() }
 
+    /**
+     * The server caps `limit` at 200, so a library bigger than that arrives page by page — the
+     * same walk the web client does as you scroll, only run to the end here because the whole
+     * library has to land in Room for the offline screens and offline shuffle to see it.
+     *
+     * Room is swapped once, at the end: a failure halfway through leaves the cached library as it
+     * was instead of replacing it with a truncated one.
+     */
     suspend fun refreshLibrary() {
         val now = System.currentTimeMillis()
-        val page = api.tracks(page = 1, limit = 200, sort = "recent")
-        trackDao.replaceLibrary(page.items.map { it.toEntity(inLibrary = true, now = now) })
+        // Uploads and deletions shift rows between pages, so pages can overlap — key by id.
+        val all = LinkedHashMap<String, TrackDto>()
+        var page = 1
+        while (true) {
+            val response = api.tracks(page = page, limit = LIBRARY_PAGE_LIMIT, sort = "recent")
+            response.items.forEach { all[it.id] = it }
+            val lastPage = response.items.size < LIBRARY_PAGE_LIMIT || all.size >= response.total
+            if (lastPage || page >= MAX_LIBRARY_PAGES) break
+            page++
+        }
+        trackDao.replaceLibrary(all.values.map { it.toEntity(inLibrary = true, now = now) })
     }
 
-    /** Public-bank search is not cached: it is a server-side query, not part of the library. */
-    suspend fun searchPublic(query: String, sort: String = "recent"): List<Track> =
-        api.publicTracks(search = query.ifBlank { null }, sort = sort).items.map { it.toModel() }
+    /**
+     * Public-bank search is not cached: it is a server-side query, not part of the library. It is
+     * also not walked to the end the way [refreshLibrary] is — the bank belongs to everybody and
+     * has no reason to fit in memory — so it arrives one page at a time behind «Показать ещё».
+     */
+    suspend fun searchPublic(query: String, sort: String = "recent", page: Int = 1): TrackPage {
+        val response = api.publicTracks(
+            page = page,
+            limit = BANK_PAGE_LIMIT,
+            search = query.ifBlank { null },
+            sort = sort
+        )
+        return TrackPage(response.items.map { it.toModel() }, response.total)
+    }
 
     suspend fun detail(id: String): TrackDetailDto = api.track(id)
 

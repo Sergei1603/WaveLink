@@ -138,6 +138,25 @@ fun PublicBankScreen(
                         onSave = { viewModel.save(track) }
                     )
                 }
+
+                if (state.hasMore) {
+                    item(key = "load-more") {
+                        WlButton(
+                            text = if (state.loadingMore) {
+                                "Загрузка…"
+                            } else {
+                                "Показать ещё (${state.total - state.results.size})"
+                            },
+                            onClick = viewModel::loadMore,
+                            enabled = !state.loadingMore,
+                            minHeight = 44.dp,
+                            fontSize = WlType.Caption,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 20.dp, vertical = 10.dp)
+                        )
+                    }
+                }
             }
         }
     }

@@ -85,7 +85,7 @@ class PlayerViewModel @Inject constructor(
     fun previous() = connection.previous()
     fun seekTo(positionMs: Long) = connection.seekTo(positionMs)
     fun seekBy(deltaMs: Long) = connection.seekBy(deltaMs)
-    fun playQueueItem(mediaId: String) = connection.playQueueItem(mediaId)
+    fun playQueueItem(entry: QueueEntry) = connection.playQueueItem(entry.timelineIndex)
 
     /** «Очистить» has to kill the feed too, or the queue refills the moment it is emptied. */
     fun clearUpcoming() {

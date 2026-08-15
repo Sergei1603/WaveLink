@@ -22,9 +22,14 @@ import ru.wavelink.app.core.prefs.SettingsStore
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** One row of the player's «Далее» list. */
+/**
+ * One row of the player's «Далее» list. [timelineIndex] is what a tap seeks to: an endless shuffle
+ * replays tracks across cycles, so the same [id] can sit in the timeline several times over and
+ * the position is the only thing that identifies the row the user actually pointed at.
+ */
 data class QueueEntry(
     val id: String,
+    val timelineIndex: Int,
     val title: String,
     val artist: String,
     val durationSeconds: Int
@@ -129,12 +134,11 @@ class PlayerConnection @Inject constructor(
         publish(c)
     }
 
-    /** Jumps to a track the user tapped in the «Далее» list. */
-    fun playQueueItem(mediaId: String) {
+    /** Jumps to the row the user tapped in the «Далее» list. */
+    fun playQueueItem(timelineIndex: Int) {
         val c = controller ?: return
-        val index = (0 until c.mediaItemCount).firstOrNull { c.getMediaItemAt(it).mediaId == mediaId }
-            ?: return
-        c.seekToDefaultPosition(index)
+        if (timelineIndex !in 0 until c.mediaItemCount) return
+        c.seekToDefaultPosition(timelineIndex)
         c.play()
     }
 
@@ -192,6 +196,7 @@ class PlayerConnection @Inject constructor(
                 add(
                     QueueEntry(
                         id = media.mediaId,
+                        timelineIndex = i,
                         title = media.mediaMetadata.title?.toString().orEmpty(),
                         artist = media.mediaMetadata.artist?.toString().orEmpty(),
                         durationSeconds = ((media.mediaMetadata.durationMs ?: 0L) / 1000).toInt()

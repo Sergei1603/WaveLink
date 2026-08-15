@@ -1,7 +1,9 @@
 package ru.wavelink.app.player
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -18,6 +20,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -47,6 +50,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -138,6 +142,7 @@ fun NowPlayingBar(
  * Screen 04. No waveform here — the design replaced it with a flat slider, because on a phone
  * a per-pixel waveform is unreadable and costs a whole extra fetch of the audio.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun PlayerScreen(
     onCollapse: () -> Unit,
@@ -379,15 +384,29 @@ fun PlayerScreen(
                     }
                     if (queueOpen) {
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            state.upcoming.take(queueVisible).forEach { entry ->
+                            state.upcoming.take(queueVisible).forEachIndexed { position, entry ->
+                                // The same contract as every other row in the app: tap plays it,
+                                // holding opens its card.
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
+                                        .clip(Wl.RadiusMd)
+                                        .combinedClickable(
+                                            onClick = { viewModel.playQueueItem(entry) },
+                                            onLongClick = { onOpenDetail(entry.id) }
+                                        )
                                         .heightIn(min = 44.dp)
-                                        .clickable { viewModel.playQueueItem(entry.id) },
+                                        .padding(horizontal = 8.dp, vertical = 4.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
+                                    Text(
+                                        "%02d".format(position + 1),
+                                        style = WlType.Meta,
+                                        color = Wl.text(35),
+                                        textAlign = TextAlign.End,
+                                        modifier = Modifier.width(24.dp)
+                                    )
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(
                                             entry.title,

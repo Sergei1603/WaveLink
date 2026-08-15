@@ -23,9 +23,15 @@ data class PublicBankUiState(
     val query: String = "",
     val sort: LibrarySort = LibrarySort.Recent,
     val results: List<Track> = emptyList(),
+    /** How many rows the query matches on the server — [results] is only what has been fetched. */
+    val total: Int = 0,
+    val page: Int = 1,
     val loading: Boolean = false,
+    val loadingMore: Boolean = false,
     val message: String? = null
-)
+) {
+    val hasMore: Boolean get() = results.size < total
+}
 
 @OptIn(FlowPreview::class)
 @HiltViewModel
@@ -47,6 +53,20 @@ class PublicBankViewModel @Inject constructor(
 
     private val queries = MutableStateFlow("")
 
+    /**
+     * Every new query or sort starts a generation; an answer from an older one is dropped, or a
+     * slow first page could land on top of a newer search — or be appended to by «Показать ещё».
+     */
+    private var generation = 0
+
+    /**
+     * The query [PublicBankUiState.results] actually came from. Not the same as the state's
+     * `query`, which follows the keyboard 300 ms ahead of the request — paging has to ask for the
+     * next page of the list on screen, not of whatever is half-typed in the field.
+     */
+    private var loadedQuery = ""
+    private var loadedSort = LibrarySort.Recent
+
     init {
         viewModelScope.launch {
             // Debounced to match the web client, which waits 300 ms before hitting the API.
@@ -66,22 +86,63 @@ class PublicBankViewModel @Inject constructor(
         viewModelScope.launch { load(_state.value.query, sort) }
     }
 
+    /**
+     * The next page of the current query. Saving a track does *not* reload the list — the badge
+     * comes from the Room mirror — so pages the user has already asked for stay where they are.
+     */
+    fun loadMore() {
+        val current = _state.value
+        if (current.loading || current.loadingMore || !current.hasMore) return
+        val gen = generation
+        val next = current.page + 1
+        viewModelScope.launch {
+            _state.value = _state.value.copy(loadingMore = true, message = null)
+            runCatching { repo.searchPublic(loadedQuery, loadedSort.apiValue, page = next) }
+                .onSuccess { page ->
+                    if (gen != generation) return@onSuccess
+                    val shown = _state.value.results
+                    // Uploads and saves shift rows between pages, so a page can overlap the one
+                    // before it — the same reason the web client dedupes on append.
+                    val seen = shown.mapTo(mutableSetOf()) { it.id }
+                    _state.value = _state.value.copy(
+                        loadingMore = false,
+                        page = next,
+                        total = page.total,
+                        results = shown + page.tracks.filterNot { it.id in seen }
+                    )
+                }
+                .onFailure {
+                    if (gen != generation) return@onFailure
+                    _state.value = _state.value.copy(loadingMore = false, message = it.toUserMessage())
+                }
+        }
+    }
+
     fun save(track: Track) = viewModelScope.launch {
         runCatching { repo.save(track.id) }
-            .onSuccess {
-                _state.value = _state.value.copy(message = "«${track.title}» в библиотеке")
-                load(_state.value.query, _state.value.sort)
-            }
+            .onSuccess { _state.value = _state.value.copy(message = "«${track.title}» в библиотеке") }
             .onFailure { _state.value = _state.value.copy(message = it.toUserMessage()) }
     }
 
     fun dismissMessage() { _state.value = _state.value.copy(message = null) }
 
     private suspend fun load(query: String, sort: LibrarySort) {
-        _state.value = _state.value.copy(loading = true, message = null)
-        runCatching { repo.searchPublic(query, sort.apiValue) }
-            .onSuccess { _state.value = _state.value.copy(loading = false, results = it) }
+        val gen = ++generation
+        _state.value = _state.value.copy(loading = true, loadingMore = false, message = null)
+        runCatching { repo.searchPublic(query, sort.apiValue, page = 1) }
+            .onSuccess { page ->
+                if (gen != generation) return@onSuccess
+                loadedQuery = query
+                loadedSort = sort
+                _state.value = _state.value.copy(
+                    loading = false,
+                    page = 1,
+                    results = page.tracks,
+                    total = page.total
+                )
+            }
             .onFailure {
+                if (gen != generation) return@onFailure
                 _state.value = _state.value.copy(loading = false, message = it.toUserMessage())
             }
     }

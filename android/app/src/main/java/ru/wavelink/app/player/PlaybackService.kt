@@ -43,6 +43,8 @@ class PlaybackService : MediaSessionService() {
         tracker.attach(exo)
         player = exo
         session = MediaSession.Builder(this, exo).build()
+        // Must be set before the first notification is posted, i.e. before playback can start.
+        setMediaNotificationProvider(WaveLinkNotificationProvider(this))
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
