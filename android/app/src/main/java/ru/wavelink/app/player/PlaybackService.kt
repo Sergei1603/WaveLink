@@ -1,5 +1,7 @@
 package ru.wavelink.app.player
 
+import android.app.PendingIntent
+import android.content.Intent
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.datasource.cache.CacheDataSource
@@ -8,6 +10,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import dagger.hilt.android.AndroidEntryPoint
+import ru.wavelink.app.MainActivity
 import ru.wavelink.app.core.prefs.SettingsStore
 import ru.wavelink.app.playtracking.PlaybackProgressTracker
 import javax.inject.Inject
@@ -42,7 +45,20 @@ class PlaybackService : MediaSessionService() {
 
         tracker.attach(exo)
         player = exo
-        session = MediaSession.Builder(this, exo).build()
+        // Without a session activity `DefaultMediaNotificationProvider` leaves the notification's
+        // content intent null, and the shade widget and lock-screen controls become untappable.
+        // MainActivity is `singleTop`, so this returns to the running app rather than restarting it.
+        session = MediaSession.Builder(this, exo)
+            .setSessionActivity(
+                PendingIntent.getActivity(
+                    this,
+                    0,
+                    Intent(this, MainActivity::class.java)
+                        .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                )
+            )
+            .build()
         // Must be set before the first notification is posted, i.e. before playback can start.
         setMediaNotificationProvider(WaveLinkNotificationProvider(this))
     }

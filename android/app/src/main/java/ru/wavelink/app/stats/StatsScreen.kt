@@ -1,6 +1,7 @@
 package ru.wavelink.app.stats
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -17,6 +18,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -40,6 +42,8 @@ import ru.wavelink.app.ui.tracksLabel
 fun StatsScreen(
     onBack: () -> Unit,
     onOpenTop: (TopChartKind) -> Unit,
+    onOpenTrack: (String) -> Unit,
+    onOpenArtist: (String) -> Unit,
     viewModel: StatsViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -124,7 +128,8 @@ fun StatsScreen(
                     title = track.title,
                     subtitle = track.artist,
                     fraction = track.plays.toFloat() / trackPeak,
-                    value = track.plays
+                    value = track.plays,
+                    onClick = { onOpenTrack(track.trackId) }
                 )
             }
 
@@ -146,7 +151,8 @@ fun StatsScreen(
                     subtitle = "${tracksLabel(artist.trackCount)} · " +
                         formatListened(artist.listenedSeconds),
                     fraction = artist.plays.toFloat() / artistPeak,
-                    value = artist.plays
+                    value = artist.plays,
+                    onClick = { onOpenArtist(artist.artist) }
                 )
             }
 
@@ -174,7 +180,12 @@ private fun StatTile(value: String, label: String, modifier: Modifier = Modifier
     }
 }
 
-/** rank · title over subtitle · a bar scaled to the leader · the count itself. */
+/**
+ * rank · title over subtitle · a bar scaled to the leader · the count itself.
+ *
+ * [onClick] is what makes the charts navigable: a track row opens its card, an artist row opens
+ * that artist's folder in the library. Rows without one stay inert.
+ */
 @Composable
 internal fun RankRow(
     rank: Int,
@@ -183,11 +194,16 @@ internal fun RankRow(
     fraction: Float,
     value: Int,
     modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
     barWidth: androidx.compose.ui.unit.Dp = 84.dp,
     rankWidth: androidx.compose.ui.unit.Dp = 16.dp
 ) {
     Row(
-        modifier = modifier.fillMaxWidth().heightIn(min = 44.dp),
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(Wl.RadiusMd)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .heightIn(min = 44.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {

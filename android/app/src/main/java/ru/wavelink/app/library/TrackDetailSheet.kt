@@ -193,7 +193,7 @@ fun TrackDetailSheet(
 
     if (addingToCollection) {
         AddToCollectionDialog(
-            trackId = trackId,
+            trackIds = listOf(trackId),
             onDismiss = { addingToCollection = false },
             onResult = viewModel::note
         )

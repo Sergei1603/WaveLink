@@ -1,6 +1,7 @@
 package ru.wavelink.app.stats
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -48,6 +49,8 @@ import ru.wavelink.app.ui.tracksLabel
 
 /** One entry, whichever list is showing — the two differ only in what the subtitle says. */
 private data class TopEntry(
+    /** Track id for a track, the artist name for an artist — what a tap has to hand on. */
+    val key: String,
     val title: String,
     val subtitle: String,
     val plays: Int
@@ -63,8 +66,15 @@ private enum class TopView(val label: String) { List("Список"), Chart("Д�
 fun TopChartScreen(
     kind: TopChartKind,
     onBack: () -> Unit,
+    onOpenTrack: (String) -> Unit,
+    onOpenArtist: (String) -> Unit,
     viewModel: TopChartViewModel = hiltViewModel()
 ) {
+    // Both readings hand back the same key, so one callback covers the list and the legend.
+    val onOpen: (String) -> Unit = when (kind) {
+        TopChartKind.Tracks -> onOpenTrack
+        TopChartKind.Artists -> onOpenArtist
+    }
     val state by viewModel.state.collectAsStateWithLifecycle()
     // The mock opens tracks as a list and artists as a ring; both switches still work.
     var view by rememberSaveable(kind) {
@@ -74,10 +84,11 @@ fun TopChartScreen(
     val entries = remember(state.stats, kind) {
         when (kind) {
             TopChartKind.Tracks -> state.stats?.topTracks.orEmpty().map {
-                TopEntry(it.title, "${it.artist} · ${formatListened(it.listenedSeconds)}", it.plays)
+                TopEntry(it.trackId, it.title, "${it.artist} · ${formatListened(it.listenedSeconds)}", it.plays)
             }
             TopChartKind.Artists -> state.stats?.topArtists.orEmpty().map {
                 TopEntry(
+                    it.artist,
                     it.artist,
                     "${tracksLabel(it.trackCount)} · ${formatListened(it.listenedSeconds)}",
                     it.plays
@@ -157,11 +168,13 @@ fun TopChartScreen(
         when (view) {
             TopView.List -> RankedList(
                 entries = entries,
+                onOpen = onOpen,
                 modifier = Modifier.weight(1f)
             )
             TopView.Chart -> ShareChart(
                 entries = entries,
                 totalPlays = totalPlays,
+                onOpen = onOpen,
                 modifier = Modifier.weight(1f)
             )
         }
@@ -182,7 +195,7 @@ fun TopChartScreen(
 }
 
 @Composable
-private fun RankedList(entries: List<TopEntry>, modifier: Modifier = Modifier) {
+private fun RankedList(entries: List<TopEntry>, onOpen: (String) -> Unit, modifier: Modifier = Modifier) {
     val peak = entries.maxOfOrNull { it.plays }?.coerceAtLeast(1) ?: 1
     LazyColumn(
         modifier = modifier,
@@ -197,6 +210,7 @@ private fun RankedList(entries: List<TopEntry>, modifier: Modifier = Modifier) {
                 subtitle = entry.subtitle,
                 fraction = entry.plays.toFloat() / peak,
                 value = entry.plays,
+                onClick = { onOpen(entry.key) },
                 barWidth = 60.dp,
                 rankWidth = 22.dp,
                 modifier = Modifier.fadingRule(inset = 20.dp, color = Wl.text(7))
@@ -210,7 +224,12 @@ private fun RankedList(entries: List<TopEntry>, modifier: Modifier = Modifier) {
  * breakdown readable. The ring and the legend walk the same colour ramp in the same order.
  */
 @Composable
-private fun ShareChart(entries: List<TopEntry>, totalPlays: Int, modifier: Modifier = Modifier) {
+private fun ShareChart(
+    entries: List<TopEntry>,
+    totalPlays: Int,
+    onOpen: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
     val named = entries.take(WlSliceColors.size)
     val namedPlays = named.sumOf { it.plays }
     val rest = (totalPlays - namedPlays).coerceAtLeast(0)
@@ -241,7 +260,8 @@ private fun ShareChart(entries: List<TopEntry>, totalPlays: Int, modifier: Modif
             LegendRow(
                 color = WlSliceColors[index],
                 label = named[index].title,
-                value = "${named[index].plays} · ${percent(named[index].plays, whole)}"
+                value = "${named[index].plays} · ${percent(named[index].plays, whole)}",
+                onClick = { onOpen(named[index].key) }
             )
         }
         if (rest > 0) {
@@ -258,9 +278,19 @@ private fun ShareChart(entries: List<TopEntry>, totalPlays: Int, modifier: Modif
 }
 
 @Composable
-private fun LegendRow(color: androidx.compose.ui.graphics.Color, label: String, value: String, muted: Boolean = false) {
+private fun LegendRow(
+    color: androidx.compose.ui.graphics.Color,
+    label: String,
+    value: String,
+    muted: Boolean = false,
+    onClick: (() -> Unit)? = null
+) {
     Row(
-        modifier = Modifier.fillMaxWidth().heightIn(min = 36.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(Wl.RadiusMd)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .heightIn(min = 36.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {

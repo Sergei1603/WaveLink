@@ -1,5 +1,6 @@
 package ru.wavelink.app.ui
 
+import android.util.Base64
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -48,6 +49,7 @@ import ru.wavelink.app.collections.CollectionDetailScreen
 import ru.wavelink.app.collections.CollectionsScreen
 import ru.wavelink.app.downloads.DownloadsScreen
 import ru.wavelink.app.downloads.DownloadsViewModel
+import ru.wavelink.app.library.ArtistDetailScreen
 import ru.wavelink.app.library.LibraryScreen
 import ru.wavelink.app.library.SearchScreen
 import ru.wavelink.app.library.TrackDetailSheet
@@ -82,6 +84,7 @@ object Routes {
     const val SEARCH = "library/search"
     const val COLLECTIONS = "library/collections"
     const val COLLECTION = "library/collections/{collectionId}"
+    const val ARTIST = "library/artists/{artist}"
     const val STATS = "profile/stats"
     const val TOP = "profile/stats/top/{kind}"
     const val DOWNLOADS = "downloads/{parent}"
@@ -90,6 +93,21 @@ object Routes {
     fun collection(id: String) = "library/collections/$id"
     fun top(kind: TopChartKind) = "profile/stats/top/${kind.name}"
     fun downloads(parent: String) = "downloads/$parent"
+
+    /**
+     * An artist name is free text — it can hold a slash, a space, a `#`. Percent-encoding is not
+     * enough here: Navigation decodes `%2F` before it matches the route, so «AC/DC» would look
+     * like two path segments. Base64 (URL-safe, unpadded) has no reserved character at all.
+     */
+    fun artist(name: String): String =
+        "library/artists/" + Base64.encodeToString(
+            name.trim().toByteArray(Charsets.UTF_8),
+            Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
+        )
+
+    fun decodeArtist(encoded: String): String = runCatching {
+        String(Base64.decode(encoded, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING), Charsets.UTF_8)
+    }.getOrDefault("")
 }
 
 @Composable
@@ -150,7 +168,30 @@ private fun MainScaffold(onSignOut: () -> Unit) {
                             onShuffle = { mode -> playerViewModel.shuffle(mode) },
                             onOpenSearch = { navController.navigate(Routes.SEARCH) },
                             onOpenCollections = { navController.navigate(Routes.COLLECTIONS) },
-                            onOpenDownloads = { navController.navigate(Routes.downloads("Библиотека")) }
+                            onOpenDownloads = { navController.navigate(Routes.downloads("Библиотека")) },
+                            onOpenArtist = { navController.navigate(Routes.artist(it)) },
+                            onDownload = { ids -> ids.forEach(downloadsViewModel::download) }
+                        )
+                    }
+                    composable(
+                        Routes.ARTIST,
+                        arguments = listOf(navArgument("artist") { type = NavType.StringType })
+                    ) { entry ->
+                        val name = Routes.decodeArtist(entry.arguments?.getString("artist").orEmpty())
+                        ArtistDetailScreen(
+                            artist = name,
+                            playingTrackId = playerState.trackId,
+                            onBack = navController::popBackStack,
+                            onPlay = { track, queue -> playerViewModel.play(track, queue, name) },
+                            onOpenDetail = { detailTrackId = it.id },
+                            // A rename retires this route's key, so the new folder replaces it
+                            // rather than stacking a second artist screen behind the first.
+                            onOpenArtist = { renamed ->
+                                navController.navigate(Routes.artist(renamed)) {
+                                    popUpTo(Routes.ARTIST) { inclusive = true }
+                                }
+                            },
+                            onDownload = { ids -> ids.forEach(downloadsViewModel::download) }
                         )
                     }
                     composable(Routes.SEARCH) {
@@ -202,7 +243,9 @@ private fun MainScaffold(onSignOut: () -> Unit) {
                     composable(Routes.STATS) {
                         StatsScreen(
                             onBack = navController::popBackStack,
-                            onOpenTop = { kind -> navController.navigate(Routes.top(kind)) }
+                            onOpenTop = { kind -> navController.navigate(Routes.top(kind)) },
+                            onOpenTrack = { detailTrackId = it },
+                            onOpenArtist = { navController.navigate(Routes.artist(it)) }
                         )
                     }
                     composable(
@@ -212,7 +255,12 @@ private fun MainScaffold(onSignOut: () -> Unit) {
                         val kind = runCatching {
                             TopChartKind.valueOf(entry.arguments?.getString("kind").orEmpty())
                         }.getOrDefault(TopChartKind.Tracks)
-                        TopChartScreen(kind = kind, onBack = navController::popBackStack)
+                        TopChartScreen(
+                            kind = kind,
+                            onBack = navController::popBackStack,
+                            onOpenTrack = { detailTrackId = it },
+                            onOpenArtist = { navController.navigate(Routes.artist(it)) }
+                        )
                     }
                     composable(
                         Routes.DOWNLOADS,

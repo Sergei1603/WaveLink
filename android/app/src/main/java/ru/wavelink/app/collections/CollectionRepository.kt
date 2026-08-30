@@ -13,6 +13,8 @@ import ru.wavelink.app.core.model.toModel
 import ru.wavelink.app.core.net.NameBody
 import ru.wavelink.app.core.net.TrackIdBody
 import ru.wavelink.app.core.net.WaveLinkApi
+import ru.wavelink.app.core.net.toUserMessage
+import ru.wavelink.app.library.BulkResult
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -81,5 +83,29 @@ class CollectionRepository @Inject constructor(
         api.removeFromCollection(collectionId, trackId)
         collectionDao.removeLink(collectionId, trackId)
         refreshAll()
+    }
+
+    /**
+     * Batch add. Refreshing the collection and the collection list is done once at the end —
+     * [addTrack] does both per call, which is fine for one track and wasteful for forty.
+     * A track already in the collection answers 409; that is counted, not fatal.
+     */
+    suspend fun addTracks(collectionId: String, trackIds: List<String>): BulkResult {
+        var ok = 0
+        var failed = 0
+        var firstError: String? = null
+        for (trackId in trackIds) {
+            runCatching { api.addToCollection(collectionId, TrackIdBody(trackId)) }
+                .onSuccess { ok++ }
+                .onFailure {
+                    failed++
+                    if (firstError == null) firstError = it.toUserMessage()
+                }
+        }
+        runCatching {
+            refreshOne(collectionId)
+            refreshAll()
+        }
+        return BulkResult(ok, failed, firstError)
     }
 }

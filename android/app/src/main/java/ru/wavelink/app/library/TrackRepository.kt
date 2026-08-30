@@ -10,6 +10,7 @@ import ru.wavelink.app.core.net.TrackDetailDto
 import ru.wavelink.app.core.net.TrackDto
 import ru.wavelink.app.core.net.UpdateTrackBody
 import ru.wavelink.app.core.net.WaveLinkApi
+import ru.wavelink.app.core.net.toUserMessage
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -24,6 +25,15 @@ private const val BANK_PAGE_LIMIT = 100
 
 /** One page of a server-side track query, with how many rows match in all. */
 data class TrackPage(val tracks: List<Track>, val total: Int)
+
+/**
+ * The outcome of a batch: how many rows the server accepted, how many it refused and the first
+ * refusal in words. A batch is deliberately not all-or-nothing — a single 409 on one track must
+ * not undo the twenty that went through.
+ */
+data class BulkResult(val ok: Int, val failed: Int, val firstError: String? = null) {
+    val allFailed: Boolean get() = ok == 0 && failed > 0
+}
 
 /** One page of a shuffled cycle, ready for the player's queue. */
 data class ShufflePage(
@@ -134,5 +144,51 @@ class TrackRepository @Inject constructor(
         api.deleteTrack(id)
         trackDao.deleteById(id)
         refreshLibrary()
+    }
+
+    /**
+     * Batch delete. Own tracks are removed from the server; tracks saved out of the public bank
+     * are only unsaved — they belong to whoever uploaded them.
+     *
+     * The library is walked **once**, after the loop: [refreshLibrary] pages through the whole
+     * library, so per-item refreshing would turn one gesture into dozens of full walks.
+     */
+    suspend fun deleteMany(tracks: List<Track>): BulkResult {
+        var ok = 0
+        var failed = 0
+        var firstError: String? = null
+        for (track in tracks) {
+            runCatching {
+                if (track.isOwned) api.deleteTrack(track.id) else api.unsaveTrack(track.id)
+                trackDao.deleteById(track.id)
+            }.onSuccess { ok++ }.onFailure {
+                failed++
+                if (firstError == null) firstError = it.toUserMessage()
+            }
+        }
+        runCatching { refreshLibrary() }
+        return BulkResult(ok, failed, firstError)
+    }
+
+    /**
+     * Rewrites the artist on every given track. Only the owner may `PATCH` a track, and the server
+     * refuses a rename that would collide with an existing «artist – title» in the same library,
+     * so failures here are expected and reported per item rather than aborting the batch.
+     */
+    suspend fun setArtistMany(ids: List<String>, artist: String): BulkResult {
+        val trimmed = artist.trim()
+        var ok = 0
+        var failed = 0
+        var firstError: String? = null
+        for (id in ids) {
+            runCatching { api.updateTrack(id, UpdateTrackBody(artist = trimmed)) }
+                .onSuccess { ok++ }
+                .onFailure {
+                    failed++
+                    if (firstError == null) firstError = it.toUserMessage()
+                }
+        }
+        runCatching { refreshLibrary() }
+        return BulkResult(ok, failed, firstError)
     }
 }

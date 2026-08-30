@@ -42,6 +42,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -154,7 +155,9 @@ fun PlayerScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val track by viewModel.currentTrack.collectAsStateWithLifecycle()
     val telegramLinked by viewModel.telegramLinked.collectAsStateWithLifecycle()
-    var queueOpen by remember { mutableStateOf(true) }
+    // Collapsed on open: the point of arriving here is the track that is playing, not the ten
+    // behind it, and an expanded list pushes the transport row off the fold on a short phone.
+    var queueOpen by rememberSaveable { mutableStateOf(false) }
     var queueVisible by remember { mutableIntStateOf(QUEUE_VISIBLE_INITIAL) }
     var addingToCollection by remember { mutableStateOf(false) }
 
@@ -221,9 +224,11 @@ fun PlayerScreen(
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
                     .padding(start = 24.dp, end = 24.dp, bottom = 18.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.Bottom)
+                // Anchored to the top, not the bottom: with «Далее» collapsed a bottom-anchored
+                // column would leave the transport row hugging the navigation bar.
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Column(modifier = Modifier.padding(top = 120.dp)) {
+                Column(modifier = Modifier.padding(top = 32.dp)) {
                     Text(state.title, style = WlType.Title, color = Wl.Text)
                     Text(
                         buildString {
@@ -274,25 +279,25 @@ fun PlayerScreen(
                     SkipButton(back = true) { viewModel.seekBy(-SKIP_SECONDS * 1000L) }
                     WlIconButton(
                         onClick = viewModel::previous,
-                        size = 52.dp,
+                        size = 64.dp,
                         enabled = state.hasPrevious
                     ) {
                         Icon(
                             Icons.Filled.SkipPrevious,
                             contentDescription = "Предыдущий",
                             tint = if (state.hasPrevious) Wl.Text else Wl.text(30),
-                            modifier = Modifier.size(30.dp)
+                            modifier = Modifier.size(38.dp)
                         )
                     }
-                    WlRoundButton(onClick = viewModel::togglePlayPause, size = 72.dp) {
-                        PlayPauseIcon(state.isPlaying, Wl.Accent, 30.dp)
+                    WlRoundButton(onClick = viewModel::togglePlayPause, size = 88.dp) {
+                        PlayPauseIcon(state.isPlaying, Wl.Accent, 40.dp)
                     }
-                    WlIconButton(onClick = viewModel::next, size = 52.dp, enabled = state.hasNext) {
+                    WlIconButton(onClick = viewModel::next, size = 64.dp, enabled = state.hasNext) {
                         Icon(
                             Icons.Filled.SkipNext,
                             contentDescription = "Следующий",
                             tint = if (state.hasNext) Wl.Text else Wl.text(30),
-                            modifier = Modifier.size(30.dp)
+                            modifier = Modifier.size(38.dp)
                         )
                     }
                     SkipButton(back = false) { viewModel.seekBy(SKIP_SECONDS * 1000L) }
@@ -455,7 +460,7 @@ fun PlayerScreen(
         val id = state.trackId
         if (id == null) addingToCollection = false
         else AddToCollectionDialog(
-            trackId = id,
+            trackIds = listOf(id),
             onDismiss = { addingToCollection = false },
             onResult = { }
         )
@@ -465,14 +470,14 @@ fun PlayerScreen(
 /** ⟲ / ⟳ with the jump printed inside, the way the mock draws them. */
 @Composable
 private fun SkipButton(back: Boolean, onClick: () -> Unit) {
-    WlIconButton(onClick = onClick, size = 48.dp) {
+    WlIconButton(onClick = onClick, size = 56.dp) {
         Box(contentAlignment = Alignment.Center) {
             Icon(
                 Icons.Filled.Replay,
                 contentDescription = if (back) "Назад на $SKIP_SECONDS секунд" else "Вперёд на $SKIP_SECONDS секунд",
                 tint = Wl.text(60),
                 modifier = Modifier
-                    .size(24.dp)
+                    .size(28.dp)
                     .scale(scaleX = if (back) 1f else -1f, scaleY = 1f)
             )
             Text(

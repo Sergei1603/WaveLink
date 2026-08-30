@@ -19,15 +19,34 @@ which is Compose's dp grid on a 412dp phone, so its px values are used verbatim 
 Navigation is **three tabs**, with everything else as a level inside one of them:
 
 ```
-Библиотека ─┬─ Поиск            (local filter, works offline)
+Библиотека ─┬─ Треки | Артисты  (a switch inside the tab; Артисты ─ Папка исполнителя)
+            ├─ Поиск            (local filter, works offline)
             ├─ Коллекции ─ Коллекция
             └─ Загрузки
 Банк
 Профиль ────┬─ Статистика ─ Топ-100 (Список / Диаграмма, tracks or artists)
             └─ Загрузки
 Плеер        full-bleed level over any tab; the mini-player opens it
-Карточка трека  bottom sheet, reachable from the player's ⓘ or by holding a row
+Карточка трека  bottom sheet, reachable from the player's ⓘ, from a stats row,
+                or from «Инфо» on a single-row selection
 ```
+
+**Selection.** Holding a row in Библиотека starts a multi-selection instead of opening the track
+card — `library/Selection.kt` holds the state (`rememberSaveable`, so a rotation keeps it) and
+draws the bar of actions: скачать, в коллекцию, в Telegram, удалить, plus «Инфо» at a selection of
+one. Артисты selects whole folders and runs the same actions over every track inside them.
+Everywhere else — the bank, the search, a collection — a hold still opens the card, because those
+screens pass no `onToggleSelect` to `TrackRow`.
+
+Renaming an artist rewrites the artist on every track in the folder **that you own**: the server
+allows `PATCH /api/tracks/{id}` only to the uploader, so tracks saved out of the public bank are
+counted out and reported rather than silently skipped. Bulk operations go through
+`TrackRepository.deleteMany` / `setArtistMany`, which walk the library once at the end — the
+single-track `delete`/`update` each call `refreshLibrary()`, and forty of those is forty full
+page-walks of the library.
+
+The artist route encodes the name as URL-safe Base64. Percent-encoding does not work here:
+Navigation decodes `%2F` before it matches the route, so «AC/DC» would arrive as two path segments.
 
 Two deliberate departures from the mock, both because the mock had no answer:
 
@@ -138,7 +157,10 @@ significance rule (`PlayStatsRulesTest`), and the discover-shuffle distribution
   republishes its state to Compose. `LocalShuffle` is the offline twin of the server's shuffle.
   `WaveLinkNotificationProvider` gives the media notification a dark generated artwork: from
   Android 12 on, SystemUI tints the shade and lock-screen widget from the large icon and falls
-  back to the device theme — a white panel — when a track has none.
+  back to the device theme — a white panel — when a track has none. The session carries a
+  `setSessionActivity` PendingIntent onto `MainActivity`; without it `DefaultMediaNotificationProvider`
+  leaves the content intent null and the shade widget is dead to a tap. `MainActivity` is
+  `singleTop`, so the tap returns to the running app rather than rebuilding it.
 - `playtracking` — measures what was *actually heard* (merged intervals, so a seek credits
   nothing), queues one event per finished session, and flushes it with WorkManager.
   `PlayStatsRules` duplicates the server's thresholds and must stay in sync with

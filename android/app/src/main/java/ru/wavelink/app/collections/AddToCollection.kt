@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import ru.wavelink.app.core.db.CollectionEntity
 import ru.wavelink.app.core.net.toUserMessage
+import ru.wavelink.app.library.BulkResult
 import ru.wavelink.app.ui.components.WlInput
 import ru.wavelink.app.ui.components.WlListRow
 import ru.wavelink.app.ui.theme.Wl
@@ -46,28 +47,29 @@ class AddToCollectionViewModel @Inject constructor(
 
     init { viewModelScope.launch { runCatching { repo.refreshAll() } } }
 
-    fun add(collectionId: String, trackId: String, onDone: (String?) -> Unit) =
+    fun add(collectionId: String, trackIds: List<String>, onDone: (BulkResult) -> Unit) =
         viewModelScope.launch {
-            runCatching { repo.addTrack(collectionId, trackId) }
-                .onSuccess { onDone(null) }
-                .onFailure { onDone(it.toUserMessage()) }
+            val result = runCatching { repo.addTracks(collectionId, trackIds) }
+                .getOrElse { BulkResult(0, trackIds.size, it.toUserMessage()) }
+            onDone(result)
         }
 
-    fun createAndAdd(name: String, trackId: String, onDone: (String?) -> Unit) =
+    fun createAndAdd(name: String, trackIds: List<String>, onDone: (BulkResult) -> Unit) =
         viewModelScope.launch {
-            runCatching { repo.addTrack(repo.create(name), trackId) }
-                .onSuccess { onDone(null) }
-                .onFailure { onDone(it.toUserMessage()) }
+            val result = runCatching { repo.addTracks(repo.create(name), trackIds) }
+                .getOrElse { BulkResult(0, trackIds.size, it.toUserMessage()) }
+            onDone(result)
         }
 }
 
 /**
- * «В коллекцию» from the player and the track card. Both reach the same picker rather than each
- * growing their own list of collections.
+ * «В коллекцию» from the player, the track card and the library selection bar. All three reach
+ * the same picker rather than each growing their own list of collections — which is also why it
+ * takes a list of ids: a selection of forty is the same gesture as a selection of one.
  */
 @Composable
 fun AddToCollectionDialog(
-    trackId: String,
+    trackIds: List<String>,
     onDismiss: () -> Unit,
     onResult: (String) -> Unit,
     viewModel: AddToCollectionViewModel = hiltViewModel()
@@ -76,10 +78,27 @@ fun AddToCollectionDialog(
     var creating by remember { mutableStateOf(false) }
     var name by remember { mutableStateOf("") }
 
+    fun report(collectionName: String, result: BulkResult) {
+        onResult(
+            buildString {
+                append("Добавлено ").append(result.ok).append(" в «").append(collectionName).append("»")
+                if (result.failed > 0) append(" · не вышло: ").append(result.failed)
+                result.firstError?.let { append(" — ").append(it) }
+            }
+        )
+        onDismiss()
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = Wl.Surface,
-        title = { Text("В коллекцию", style = WlType.Heading, color = Wl.Text) },
+        title = {
+            Text(
+                if (trackIds.size > 1) "В коллекцию · ${tracksLabel(trackIds.size)}" else "В коллекцию",
+                style = WlType.Heading,
+                color = Wl.Text
+            )
+        },
         text = {
             Column(
                 modifier = Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()),
@@ -102,10 +121,7 @@ fun AddToCollectionDialog(
                             hint = tracksLabel(collection.trackCount),
                             ruled = true,
                             onClick = {
-                                viewModel.add(collection.id, trackId) { error ->
-                                    onResult(error ?: "Добавлено в «${collection.name}»")
-                                    onDismiss()
-                                }
+                                viewModel.add(collection.id, trackIds) { report(collection.name, it) }
                             }
                         )
                     }
@@ -126,10 +142,7 @@ fun AddToCollectionDialog(
                 TextButton(
                     enabled = name.isNotBlank(),
                     onClick = {
-                        viewModel.createAndAdd(name, trackId) { error ->
-                            onResult(error ?: "Добавлено в «${name.trim()}»")
-                            onDismiss()
-                        }
+                        viewModel.createAndAdd(name, trackIds) { report(name.trim(), it) }
                     }
                 ) { Text("Создать и добавить", color = Wl.Accent) }
             }
