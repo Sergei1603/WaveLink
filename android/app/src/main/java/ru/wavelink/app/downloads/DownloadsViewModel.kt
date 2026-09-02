@@ -64,19 +64,25 @@ class DownloadsViewModel @Inject constructor(
     private val _storage = MutableStateFlow(StorageUiState())
     val storage: StateFlow<StorageUiState> = _storage.asStateFlow()
 
+    /** Bumped by anything that changes disk usage without changing a download or the limit. */
+    private val storageTicks = MutableStateFlow(0)
+
     init {
         viewModelScope.launch {
-            combine(repo.observeAll(), settings.cacheBytes) { downloads, limit ->
-                downloads.sumOf { it.bytesDownloaded } to limit
-            }.collect { (pinned, limit) ->
-                // cacheSpace touches the cache index on disk; keep it off the main thread.
-                val total = withContext(Dispatchers.IO) { repo.cacheSpace() }
-                _storage.value = StorageUiState(
-                    pinnedBytes = pinned,
-                    streamCacheBytes = (total - pinned).coerceAtLeast(0),
-                    limitBytes = limit
-                )
-            }
+            combine(repo.observeAll(), settings.cacheBytes, storageTicks) { _, limit, _ -> limit }
+                .collect { limit ->
+                    // Both figures are read from the caches themselves rather than summed from
+                    // the download rows: the rows say what was fetched, the caches say what is
+                    // actually on the disk right now.
+                    val (pinned, streamed) = withContext(Dispatchers.IO) {
+                        repo.pinnedBytes() to repo.streamCacheBytes()
+                    }
+                    _storage.value = StorageUiState(
+                        pinnedBytes = pinned,
+                        streamCacheBytes = streamed,
+                        limitBytes = limit
+                    )
+                }
         }
     }
 
@@ -84,7 +90,12 @@ class DownloadsViewModel @Inject constructor(
 
     fun remove(trackId: String) = repo.remove(trackId)
 
-    fun clearStreamCache() { repo.clearStreamCache() }
+    fun clearStreamCache() {
+        viewModelScope.launch {
+            repo.clearStreamCache()
+            storageTicks.value++
+        }
+    }
 
     private fun label(state: Int, percent: Float): String = when (state) {
         Download.STATE_QUEUED -> "в очереди"

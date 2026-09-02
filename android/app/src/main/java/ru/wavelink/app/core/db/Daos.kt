@@ -183,6 +183,23 @@ interface DownloadDao {
     @Upsert
     suspend fun upsert(download: DownloadEntity)
 
+    @Upsert
+    suspend fun upsertAll(downloads: List<DownloadEntity>)
+
     @Query("DELETE FROM downloads WHERE trackId = :trackId")
     suspend fun deleteByTrack(trackId: String)
+
+    @Query("DELETE FROM downloads")
+    suspend fun deleteAll()
+
+    /**
+     * Media3's download index is the truth; this table is a mirror kept by a listener that only
+     * lives as long as the process. Rewritten wholesale at startup so rows for downloads that
+     * disappeared while the app was dead cannot linger.
+     */
+    @Transaction
+    suspend fun replaceAll(downloads: List<DownloadEntity>) {
+        deleteAll()
+        upsertAll(downloads)
+    }
 }

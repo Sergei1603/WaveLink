@@ -165,10 +165,22 @@ significance rule (`PlayStatsRulesTest`), and the discover-shuffle distribution
   nothing), queues one event per finished session, and flushes it with WorkManager.
   `PlayStatsRules` duplicates the server's thresholds and must stay in sync with
   `PlayStats` in `WaveLink.API/appsettings.json`.
-- `downloads` — Media3 `DownloadManager` writing into the *same* `SimpleCache` as streaming.
-  Downloaded spans are pinned, so the LRU evictor only ever reclaims opportunistically cached
-  bytes. That is why the downloads screen shows the cache limit as applying to streaming only,
-  and why «Очистить кэш стриминга» removes every cache key *except* the ones a download owns.
+- `downloads` — Media3 `DownloadManager` writing into a `SimpleCache` of its **own**, separate
+  from the streaming one. That split is the whole point: Media3 has no pinned span — `CacheSpan`
+  carries no such flag and `LeastRecentlyUsedCacheEvictor` reclaims strictly by last-touch time —
+  so one shared cache lets an evening of listening eat the tracks saved for a flight, silently,
+  because `DownloadManager` never re-checks the cache and goes on reporting `STATE_COMPLETED`.
+  Online that only costs a re-stream; offline the track is simply dead. So: `NoOpCacheEvictor` on
+  the download cache (`filesDir/media`, the historic directory — renaming it would orphan every
+  track already on the phone), LRU under the user's limit on the stream cache
+  (`filesDir/media-stream`), and playback reads through both — `PlaybackModule.cacheDataSourceFactory`
+  chains a **read-only** `CacheDataSource` over the downloads in front of the streaming one, so
+  nothing but the `DownloadManager` can write into a cache that has no evictor.
+  `DownloadsRepository.reconcile` runs once per process from `MainActivity` and settles the three
+  ways the two can drift while the app is dead: it rewrites the Room mirror from the download
+  index, prunes the pinned cache down to what a download still claims (nothing else ever frees
+  it), and re-queues any `STATE_COMPLETED` download whose bytes are no longer fully cached —
+  showing «в очереди» is the honest answer, and beats pretending the track is on the phone.
 - `telegram` — delivery only (`GET /api/telegram/status`, `POST /api/telegram/send`). Pairing a
   chat stays a web-and-bot job; the server answers `410` to `POST /api/telegram/link` on purpose.
   The status is cached in a singleton because the player, the track card and the profile all ask.
