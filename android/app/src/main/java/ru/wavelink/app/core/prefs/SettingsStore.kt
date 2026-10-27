@@ -29,10 +29,11 @@ class SettingsStore @Inject constructor(@ApplicationContext private val context:
     val wifiOnlyDownloads: Flow<Boolean> = context.dataStore.data.map { it[KEY_WIFI_ONLY] ?: true }
 
     /**
-     * When off, playback stops as soon as the app is swiped away instead of carrying on in the
-     * media notification.
+     * When off, playback stops as soon as the app is swiped away from recents instead of carrying
+     * on in the media notification. Off by default: users read a swipe-away as "close the app".
+     * Minimising the app or locking the screen never stops playback either way.
      */
-    val backgroundPlayback: Flow<Boolean> = context.dataStore.data.map { it[KEY_BACKGROUND] ?: true }
+    val backgroundPlayback: Flow<Boolean> = context.dataStore.data.map { it[KEY_BACKGROUND] ?: false }
 
     /**
      * Synchronous read for callers that cannot suspend: the OkHttp interceptor that rewrites

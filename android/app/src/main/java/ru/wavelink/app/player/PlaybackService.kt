@@ -68,12 +68,17 @@ class PlaybackService : MediaSessionService() {
     override fun onTaskRemoved(rootIntent: android.content.Intent?) {
         val exo = player
         // Nothing is playing and the user swiped the app away — don't linger as a foreground
-        // service. With «Фоновое воспроизведение» off, stop even if something *is* playing:
-        // that switch is precisely the promise that closing the app ends the sound.
+        // service. With «Фоновое воспроизведение» off (the default), stop even if something *is*
+        // playing: that switch is precisely the promise that closing the app ends the sound.
         if (exo == null || !exo.playWhenReady || exo.mediaItemCount == 0 ||
             !settings.backgroundPlaybackBlocking()
         ) {
-            exo?.stop()
+            exo?.run {
+                stop()
+                // An empty timeline is what makes Media3 drop the notification for good, and the
+                // item transition to null is what flushes the listening session to the tracker.
+                clearMediaItems()
+            }
             stopSelf()
         }
     }

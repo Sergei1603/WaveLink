@@ -21,7 +21,7 @@ data class ProfileUiState(
     val baseUrl: String = "",
     val cacheBytes: Long = SettingsStore.DEFAULT_CACHE_BYTES,
     val wifiOnlyDownloads: Boolean = true,
-    val backgroundPlayback: Boolean = true,
+    val backgroundPlayback: Boolean = false,
     /** Null until the server has answered — "unknown" must not be shown as "switched off". */
     val telegramBotEnabled: Boolean? = null,
     val telegramLinked: Boolean = false

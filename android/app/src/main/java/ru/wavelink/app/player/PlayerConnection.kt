@@ -2,15 +2,16 @@ package ru.wavelink.app.player
 
 import android.content.ComponentName
 import android.content.Context
+import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
-import com.google.common.util.concurrent.MoreExecutors
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -77,6 +78,14 @@ class PlayerConnection @Inject constructor(
 
     private var controller: MediaController? = null
     private var connecting = false
+    private var ticking: Job? = null
+
+    /**
+     * A play request that arrived while there was no live controller — the first tap after a
+     * cold start, or after the service went away. It runs once the connection is up instead of
+     * being dropped; only the latest one is kept, since a newer tap supersedes an older one.
+     */
+    private var pendingPlay: ((MediaController) -> Unit)? = null
 
     /** Media3 carries no notion of "where this queue came from", so the label lives here. */
     private var source: String = ""
@@ -85,41 +94,84 @@ class PlayerConnection @Inject constructor(
         override fun onEvents(player: Player, events: Player.Events) = publish(player)
     }
 
+    /**
+     * This object is a process-wide singleton, but [PlaybackService] is not: it can be destroyed
+     * while the process lives on (stopped after a swipe-away, reclaimed by the system). A released
+     * controller silently swallows every command, so it has to be dropped here, or every button
+     * stays dead until the process itself dies.
+     */
+    private val controllerListener = object : MediaController.Listener {
+        override fun onDisconnected(controller: MediaController) {
+            if (this@PlayerConnection.controller === controller) dropController()
+        }
+    }
+
     fun connect() {
-        if (controller != null || connecting) return
+        if (connecting) return
+        if (controller?.isConnected == true) return
+        controller?.let { stale -> dropController(); stale.release() }
         connecting = true
         val token = SessionToken(context, ComponentName(context, PlaybackService::class.java))
-        val future = MediaController.Builder(context, token).buildAsync()
+        val future = MediaController.Builder(context, token)
+            .setListener(controllerListener)
+            .buildAsync()
         future.addListener({
             connecting = false
-            controller = runCatching { future.get() }.getOrNull()?.also {
-                it.addListener(listener)
-                publish(it)
-                startTicking()
+            val c = runCatching { future.get() }.getOrNull()
+            if (c == null) {
+                pendingPlay = null
+                return@addListener
             }
-        }, MoreExecutors.directExecutor())
+            controller = c
+            c.addListener(listener)
+            publish(c)
+            if (ticking?.isActive != true) ticking = startTicking()
+            pendingPlay?.let { action ->
+                pendingPlay = null
+                action(c)
+            }
+        }, ContextCompat.getMainExecutor(context))
     }
 
     fun release() {
+        pendingPlay = null
+        val c = controller ?: return
+        dropController()
+        c.release()
+    }
+
+    private fun dropController() {
         controller?.removeListener(listener)
-        controller?.release()
         controller = null
+        source = ""
+        _state.value = PlayerUiState()
+    }
+
+    /** The controller if it can take commands right now; otherwise starts reconnecting. */
+    private fun live(): MediaController? {
+        val c = controller
+        if (c != null && c.isConnected) return c
+        connect()
+        return null
     }
 
     fun play(track: Track, queue: List<Track>, source: String = "") {
-        val c = controller ?: run { connect(); null } ?: return
-        this.source = source
         val baseUrl = settings.baseUrlBlocking()
         val items = queue.map { it.toMediaItem(baseUrl) }
         val startIndex = queue.indexOfFirst { it.id == track.id }.coerceAtLeast(0)
-        c.setMediaItems(items, startIndex, 0L)
-        c.prepare()
-        c.play()
+        val action: (MediaController) -> Unit = { c ->
+            this.source = source
+            c.setMediaItems(items, startIndex, 0L)
+            c.prepare()
+            c.play()
+        }
+        val c = live()
+        if (c != null) action(c) else pendingPlay = action
     }
 
     /** Appends the next shuffle page. Playback is untouched — the queue just gets longer. */
     fun addToQueue(tracks: List<Track>) {
-        val c = controller ?: return
+        val c = live() ?: return
         if (tracks.isEmpty()) return
         val baseUrl = settings.baseUrlBlocking()
         val firstNew = c.mediaItemCount
@@ -136,7 +188,7 @@ class PlayerConnection @Inject constructor(
 
     /** Jumps to the row the user tapped in the «Далее» list. */
     fun playQueueItem(timelineIndex: Int) {
-        val c = controller ?: return
+        val c = live() ?: return
         if (timelineIndex !in 0 until c.mediaItemCount) return
         c.seekToDefaultPosition(timelineIndex)
         c.play()
@@ -149,38 +201,39 @@ class PlayerConnection @Inject constructor(
     }
 
     fun togglePlayPause() {
-        val c = controller ?: return
+        val c = live() ?: return
         if (c.isPlaying) c.pause() else c.play()
     }
 
-    fun next() { controller?.seekToNextMediaItem() }
-    fun previous() { controller?.seekToPreviousMediaItem() }
-    fun seekTo(positionMs: Long) { controller?.seekTo(positionMs) }
+    fun next() { live()?.seekToNextMediaItem() }
+    fun previous() { live()?.seekToPreviousMediaItem() }
+    fun seekTo(positionMs: Long) { live()?.seekTo(positionMs) }
 
     /** The player's ±15 s jumps, clamped so a skip near either end is not a no-op crash. */
     fun seekBy(deltaMs: Long) {
-        val c = controller ?: return
+        val c = live() ?: return
         val duration = c.duration.takeIf { it > 0 } ?: Long.MAX_VALUE
         c.seekTo((c.currentPosition + deltaMs).coerceIn(0L, duration))
     }
 
     /** «Очистить» drops what has not been played yet and keeps the current track running. */
     fun clearUpcoming() {
-        val c = controller ?: return
+        val c = live() ?: return
         val from = c.currentMediaItemIndex + 1
         if (from < c.mediaItemCount) c.removeMediaItems(from, c.mediaItemCount)
         publish(c)
     }
 
     fun stop() {
-        controller?.run { stop(); clearMediaItems() }
+        pendingPlay = null
+        controller?.takeIf { it.isConnected }?.run { stop(); clearMediaItems() }
         source = ""
         _state.value = PlayerUiState()
     }
 
     private fun startTicking() = scope.launch {
         while (true) {
-            controller?.let { if (it.isPlaying) publish(it) }
+            controller?.let { if (it.isConnected && it.isPlaying) publish(it) }
             delay(500)
         }
     }

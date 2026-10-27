@@ -151,7 +151,7 @@ fun ProfileScreen(
                 )
                 WlListRow(
                     title = "Фоновое воспроизведение",
-                    hint = "Уведомление с управлением",
+                    hint = "Играть после закрытия приложения",
                     ruled = true,
                     trailing = {
                         WlToggle(state.backgroundPlayback, viewModel::setBackgroundPlayback)
