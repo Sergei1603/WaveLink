@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Deselect
+import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
@@ -51,6 +53,17 @@ class SelectionState(initial: Set<String> = emptySet()) {
 
     fun clear() { ids = emptySet() }
 
+    /** «Выбрать все»: every row the current screen lists — tracks, or artist folders. */
+    fun selectAll(present: Collection<String>) { ids = present.toSet() }
+
+    fun hasAll(present: Collection<String>): Boolean =
+        present.isNotEmpty() && ids.containsAll(present)
+
+    /** The bar's toggle: picks everything, or — when everything is picked already — nothing. */
+    fun toggleAll(present: Collection<String>) {
+        if (hasAll(present)) clear() else selectAll(present)
+    }
+
     /** Keeps only what still exists — a deleted or renamed row must not linger in the count. */
     fun retainAll(present: Collection<String>) {
         if (!active) return
@@ -85,7 +98,9 @@ data class SelectionAction(
 @Composable
 fun SelectionBar(
     count: Int,
+    allSelected: Boolean,
     onClear: () -> Unit,
+    onToggleAll: () -> Unit,
     actions: List<SelectionAction>,
     modifier: Modifier = Modifier
 ) {
@@ -110,8 +125,16 @@ fun SelectionBar(
             count.toString(),
             style = WlType.NumericSm,
             color = Wl.Text,
-            modifier = Modifier.padding(end = 6.dp)
+            modifier = Modifier.padding(end = 2.dp)
         )
+        WlIconButton(onClick = onToggleAll, size = 40.dp) {
+            Icon(
+                if (allSelected) Icons.Filled.Deselect else Icons.Filled.SelectAll,
+                contentDescription = if (allSelected) "Снять все" else "Выбрать все",
+                tint = Wl.text(70),
+                modifier = Modifier.size(20.dp)
+            )
+        }
         actions.forEach { action ->
             WlStackedButton(
                 label = action.label,

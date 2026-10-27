@@ -242,7 +242,9 @@ fun LibraryScreen(
             if (selection.active) {
                 SelectionBar(
                     count = selection.count,
+                    allSelected = selection.hasAll(presentKeys),
                     onClear = selection::clear,
+                    onToggleAll = { selection.toggleAll(presentKeys) },
                     actions = libraryActions(
                         selectedTracks = selectedTracks,
                         folder = selectedFolder,

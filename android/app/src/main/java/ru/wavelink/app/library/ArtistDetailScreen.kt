@@ -71,7 +71,8 @@ fun ArtistDetailScreen(
     var confirmingDelete by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf(false) }
 
-    LaunchedEffect(tracks.map { it.id }) { selection.retainAll(tracks.map { it.id }) }
+    val trackIds = tracks.map { it.id }
+    LaunchedEffect(trackIds) { selection.retainAll(trackIds) }
 
     val selected = tracks.filter { selection.contains(it.id) }
 
@@ -129,7 +130,9 @@ fun ArtistDetailScreen(
         if (selection.active) {
             SelectionBar(
                 count = selection.count,
+                allSelected = selection.hasAll(trackIds),
                 onClear = selection::clear,
+                onToggleAll = { selection.toggleAll(trackIds) },
                 actions = buildList {
                     if (selected.size == 1) {
                         add(
